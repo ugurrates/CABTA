@@ -14,7 +14,7 @@ CABTA is a comprehensive, local-first security analysis platform designed for SO
 
 | Dashboard | Settings |
 |:---------:|:--------:|
-| ![Dashboard](docs/screenshots/dashboard_full.png) | ![Settings](docs/screenshots/settings.png) |
+| ![Dashboard]( | ![Settings](docs/screenshots/settings.png) |
 
 | File Analysis | Email Forensics |
 |:------------:|:---------------:|
