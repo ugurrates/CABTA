@@ -73,30 +73,30 @@ steps:
       indicator: "{{item}}"
     description: Tum IOC'lari ThreatFox'ta kontrol et
 
-  # ===== Phase 2b: ArgusWatch Zenginlestirme =====
+  # ===== Phase 2b: Free OSINT Enrichment =====
   - name: ip_shodan_internetdb
-    tool: mcp:arguswatch/shodan_internetdb_lookup
+    tool: mcp:free-osint/shodan_internetdb_lookup
     for_each: "extract_alert_iocs.ips"
     params:
       ip: "{{item}}"
     description: Shodan InternetDB ile IP acik port, CVE ve servis kontrolu (FREE, API key gerektirmez)
 
   - name: url_openphish
-    tool: mcp:arguswatch/openphish_lookup
+    tool: mcp:free-osint/openphish_lookup
     for_each: "extract_alert_iocs.urls"
     params:
       url: "{{item}}"
     description: OpenPhish phishing URL feed kontrolu
 
   - name: ioc_circl_misp
-    tool: mcp:arguswatch/circl_misp_feed_check
+    tool: mcp:free-osint/circl_misp_feed_check
     for_each: "extract_alert_iocs.all_iocs"
     params:
       ioc: "{{item}}"
     description: CIRCL MISP European CERT threat intel feed kontrolu (hashlookup + BGP ranking)
 
   - name: ransomware_check
-    tool: mcp:arguswatch/ransomwatch_check
+    tool: mcp:free-osint/ransomwatch_check
     params:
       query: "{{alert_text}}"
     description: Ransomwatch ile ransomware grup aktivitesi ve kurban kontrolu

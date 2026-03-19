@@ -121,9 +121,9 @@ steps:
       if: "{{known_indicators.hashes}}"
     description: Malwoverview ile hash istihbarati zenginlestirme
 
-  # ===== Phase 1b: ArgusWatch Zenginlestirme =====
+  # ===== Phase 1b: Free OSINT Enrichment =====
   - name: shodan_ip_recon
-    tool: mcp:arguswatch/shodan_internetdb_lookup
+    tool: mcp:free-osint/shodan_internetdb_lookup
     for_each: "known_indicators.ips"
     params:
       ip: "{{item}}"
@@ -132,31 +132,31 @@ steps:
     description: Shodan InternetDB ile IP acik port, CVE ve servis kontrolu (FREE)
 
   - name: malpedia_search
-    tool: mcp:arguswatch/malpedia_malware_search
+    tool: mcp:free-osint/malpedia_malware_search
     params:
       query: "{{hunt_hypothesis}}"
     description: Malpedia malware ailesi arama - hipotezdeki malware ailesini Malpedia'da ara
 
   - name: ransomwatch_activity
-    tool: mcp:arguswatch/ransomwatch_check
+    tool: mcp:free-osint/ransomwatch_check
     params:
       query: "{{hunt_hypothesis}}"
     description: Ransomwatch ile ransomware grup aktivitesi ve kurban kontrolu
 
   - name: darksearch_intel
-    tool: mcp:arguswatch/darksearch_query
+    tool: mcp:free-osint/darksearch_query
     params:
       query: "{{hunt_hypothesis}}"
     description: Dark web arama (Ahmia.fi) - tehdit aktouru aktivitesi ve veri sizintisi tespiti
 
   - name: epss_top_threats
-    tool: mcp:arguswatch/epss_top_exploited
+    tool: mcp:free-osint/epss_top_exploited
     params:
       top_n: 20
     description: EPSS en cok istismar edilen CVE'ler - guncel exploit trendleri ile hipotez dogrulama
 
   - name: paste_leak_search
-    tool: mcp:arguswatch/paste_site_search
+    tool: mcp:free-osint/paste_site_search
     params:
       query: "{{hunt_hypothesis}}"
     description: Paste site arama - credential leak ve veri sizintisi tespiti

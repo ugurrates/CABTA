@@ -1,7 +1,7 @@
 """
-ArgusWatch Threat Intelligence MCP Server - Extended threat intel feeds.
+Free Threat Intelligence MCP Server - Extended threat intel feeds.
 
-Inspired by ArgusWatch-AI (https://github.com/3sk1nt4n/arguswatch-ai).
+Free OSINT threat intelligence feeds.
 Adds threat intel sources NOT covered by existing threat-intel-free server:
 
   - OpenPhish (phishing URL feed)
@@ -19,7 +19,7 @@ Adds threat intel sources NOT covered by existing threat-intel-free server:
 All sources are FREE and require NO API keys.
 
 Usage:
-    python -m src.mcp_servers.arguswatch_tools
+    python -m src.mcp_servers.free_osint_tools
 """
 
 import json
@@ -35,7 +35,7 @@ from mcp.server.fastmcp import FastMCP
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("arguswatch")
+mcp = FastMCP("free-osint")
 
 TIMEOUT = 20
 

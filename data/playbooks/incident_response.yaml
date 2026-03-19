@@ -135,29 +135,29 @@ steps:
       hash_value: "{{item}}"
     description: Malwoverview ile derinlemesine hash istihbarati
 
-  # ===== Phase 1b: ArgusWatch Zenginlestirme =====
+  # ===== Phase 1b: Free OSINT Enrichment =====
   - name: ip_shodan_internetdb
-    tool: mcp:arguswatch/shodan_internetdb_lookup
+    tool: mcp:free-osint/shodan_internetdb_lookup
     for_each: "extract_incident_iocs.ips"
     params:
       ip: "{{item}}"
     description: Shodan InternetDB ile IP acik port, CVE ve servis kontrolu (FREE)
 
   - name: ioc_circl_misp
-    tool: mcp:arguswatch/circl_misp_feed_check
+    tool: mcp:free-osint/circl_misp_feed_check
     for_each: "extract_incident_iocs.hashes"
     params:
       ioc: "{{item}}"
     description: CIRCL MISP hashlookup kontrolu - bilinen dosya mi?
 
   - name: ransomware_activity_check
-    tool: mcp:arguswatch/ransomwatch_check
+    tool: mcp:free-osint/ransomwatch_check
     params:
       query: "{{incident_description}}"
     description: Ransomwatch ile ransomware grup aktivitesi kontrolu - olay ransomware ile iliskili mi?
 
   - name: domain_hudsonrock_check
-    tool: mcp:arguswatch/hudsonrock_check
+    tool: mcp:free-osint/hudsonrock_check
     for_each: "extract_incident_iocs.domains"
     params:
       domain: "{{item}}"

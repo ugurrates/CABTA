@@ -40,7 +40,7 @@ INSTRUCTIONS:
 1. You MUST use tools to gather evidence before drawing conclusions. Never answer from memory alone.
 2. For IOC investigations: call investigate_ioc first, then use MCP tools like osint-tools.whois_lookup, network-analysis.geoip_lookup, threat-intel-free.threatfox_ioc_lookup for deeper analysis.
 3. For file analysis: call analyze_malware first, then use MCP tools like remnux.pe_analyze, flare.strings_analysis, remnux.yara_scan, forensics-tools.file_metadata for deeper analysis.
-4. For email analysis: call analyze_email first, then use MCP tools like osint-tools.email_security_check, arguswatch.openphish_lookup for deeper analysis.
+4. For email analysis: call analyze_email first, then use MCP tools like osint-tools.email_security_check, free-osint.openphish_lookup for deeper analysis.
 5. After gathering evidence, call correlate_findings to produce the final verdict.
 6. Only write a final text answer (no tool call) AFTER you have gathered real evidence from at least 2 tools.
 7. When calling a tool, ONLY pass the tool's own parameters (e.g. {{"ioc": "8.8.8.8"}}). Do NOT include extra keys like "action", "reasoning", or "tool" in the arguments.
@@ -877,7 +877,7 @@ class AgentLoop:
 
         # Define relevant server prefixes per category
         ioc_servers = {
-            'threat-intel-free', 'malwoverview', 'arguswatch',
+            'threat-intel-free', 'malwoverview', 'free-osint',
             'network-analysis', 'osint-tools',
         }
         file_servers = {
@@ -885,7 +885,7 @@ class AgentLoop:
             'malwoverview',
         }
         email_servers = {
-            'osint-tools', 'threat-intel-free', 'arguswatch',
+            'osint-tools', 'threat-intel-free', 'free-osint',
         }
         vuln_servers = {'vulnerability-tools'}
 
@@ -947,14 +947,14 @@ class AgentLoop:
                 result.extend([
                     ('network-analysis.whois_lookup', {'target': ioc_val}),
                     ('network-analysis.geoip_lookup', {'ip': ioc_val}),
-                    ('arguswatch.shodan_internetdb_lookup', {'ip': ioc_val}),
+                    ('free-osint.shodan_internetdb_lookup', {'ip': ioc_val}),
                 ])
             elif re.match(r'[a-zA-Z0-9]', ioc_val) and '.' in ioc_val:
                 # Domain
                 result.extend([
                     ('osint-tools.whois_lookup', {'domain': ioc_val}),
                     ('osint-tools.dns_resolve', {'domain': ioc_val}),
-                    ('arguswatch.crtsh_subdomain_search', {'domain': ioc_val}),
+                    ('free-osint.crtsh_subdomain_search', {'domain': ioc_val}),
                 ])
             elif re.match(r'^[a-fA-F0-9]{32,64}$', ioc_val):
                 # Hash

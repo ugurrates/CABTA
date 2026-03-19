@@ -44,28 +44,28 @@ steps:
       domain: "{{parse_email.sender_domain}}"
     description: Gonderen domain DNS kayitlari
 
-  # ===== ArgusWatch Zenginlestirme =====
+  # ===== Free OSINT Enrichment =====
   - name: sender_typosquat
-    tool: mcp:arguswatch/typosquat_detect
+    tool: mcp:free-osint/typosquat_detect
     params:
       domain: "{{parse_email.sender_domain}}"
     description: Typosquat tespiti - gonderen domain mesru domain'in sahte kopyasi mi?
 
   - name: sender_hudsonrock
-    tool: mcp:arguswatch/hudsonrock_check
+    tool: mcp:free-osint/hudsonrock_check
     params:
       domain: "{{parse_email.sender_domain}}"
     description: HudsonRock info-stealer kurban kontrolu - gonderen domain calisanlari ele gecirilmis mi?
 
   - name: paste_leak_check
-    tool: mcp:arguswatch/paste_site_search
+    tool: mcp:free-osint/paste_site_search
     params:
       query: "{{parse_email.sender_domain}}"
     description: Paste site arama - gonderen domain ile iliskili credential leak kontrolu
 
   # ===== URL Analizi =====
   - name: url_openphish
-    tool: mcp:arguswatch/openphish_lookup
+    tool: mcp:free-osint/openphish_lookup
     for_each: "extract_iocs.urls"
     params:
       url: "{{item}}"

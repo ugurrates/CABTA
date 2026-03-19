@@ -64,7 +64,7 @@ CABTA is a comprehensive, local-first security analysis platform designed for SO
 - **Analyst-Grade Output**: Shows WHY something is malicious with detailed evidence and MITRE mapping
 - **Production-Grade Scoring**: Multi-source weighted composite scoring with confidence levels
 - **Real-Time Investigation**: Async operations for fast multi-source lookups
-- **15 Free Intelligence Sources**: Works without any API keys using ArgusWatch OSINT feeds
+- **15 Free Intelligence Sources**: Works without any API keys using free OSINT feeds
 
 ---
 
@@ -317,7 +317,7 @@ CABTA uses a multi-layered scoring architecture:
 | **AlienVault OTX** | Pulse-based threat intelligence, IOC correlation |
 | **GreyNoise** | Internet scanner identification, benign/malicious classification |
 
-### Free (ArgusWatch - No Key Required)
+### Free Sources (No Key Required)
 
 15 sources including Abuse.ch feeds, OpenPhish, Malpedia, CIRCL MISP, HudsonRock, Ransomwatch, EPSS, and more.
 

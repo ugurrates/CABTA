@@ -93,22 +93,22 @@ steps:
       if: "{{parse_email.sender_ip}}"
     description: Gonderen IP Tor exit node kontrolu
 
-  # ===== Phase 2b: ArgusWatch Zenginlestirme =====
+  # ===== Phase 2b: Free OSINT Enrichment =====
   - name: sender_hudsonrock
-    tool: mcp:arguswatch/hudsonrock_check
+    tool: mcp:free-osint/hudsonrock_check
     params:
       domain: "{{parse_email.sender_domain}}"
     description: HudsonRock info-stealer kurban kontrolu - gonderen domain calisanlari ele gecirilmis mi?
 
   - name: sender_typosquat
-    tool: mcp:arguswatch/typosquat_detect
+    tool: mcp:free-osint/typosquat_detect
     params:
       domain: "{{parse_email.sender_domain}}"
     description: Typosquat tespiti - gonderen domain meşru domain'in sahte kopyası mı?
 
   # ===== Phase 3: URL Analizi =====
   - name: url_openphish
-    tool: mcp:arguswatch/openphish_lookup
+    tool: mcp:free-osint/openphish_lookup
     for_each: "extract_email_iocs.urls"
     params:
       url: "{{item}}"

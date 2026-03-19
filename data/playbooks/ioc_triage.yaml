@@ -92,9 +92,9 @@ steps:
       if: "{{ioc_type}} == 'domain'"
     description: Subdomain kesfet (crt.sh)
 
-  # ===== ArgusWatch Zenginlestirme =====
+  # ===== Free OSINT Enrichment =====
   - name: shodan_ip_check
-    tool: mcp:arguswatch/shodan_internetdb_lookup
+    tool: mcp:free-osint/shodan_internetdb_lookup
     params:
       ip: "{{ioc}}"
     condition:
@@ -102,13 +102,13 @@ steps:
     description: Shodan InternetDB ile IP acik port, CVE, servis kontrolu (FREE)
 
   - name: circl_misp_check
-    tool: mcp:arguswatch/circl_misp_feed_check
+    tool: mcp:free-osint/circl_misp_feed_check
     params:
       ioc: "{{ioc}}"
     description: CIRCL MISP European CERT threat intel kontrolu
 
   - name: crtsh_check
-    tool: mcp:arguswatch/crtsh_subdomain_search
+    tool: mcp:free-osint/crtsh_subdomain_search
     params:
       domain: "{{ioc}}"
     condition:
@@ -117,7 +117,7 @@ steps:
 
   # ===== URL Analizi =====
   - name: openphish_check
-    tool: mcp:arguswatch/openphish_lookup
+    tool: mcp:free-osint/openphish_lookup
     params:
       url: "{{ioc}}"
     condition:
