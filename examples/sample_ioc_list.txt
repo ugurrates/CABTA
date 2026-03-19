@@ -1,0 +1,29 @@
+# Sample IOC List - FOR TESTING ONLY
+# Contains synthetic indicators for demonstrating CABTA's IOC investigation
+# All IPs use RFC 5737 documentation ranges (192.0.2.x, 198.51.100.x, 203.0.113.x)
+
+## Suspicious IP Addresses
+203.0.113.10
+203.0.113.50
+198.51.100.25
+192.0.2.100
+
+## Suspicious Domains
+malware-delivery.example.com
+c2-callback.example.net
+xkqwejrh.example.com
+data-exfil.example.org
+
+## File Hashes (SHA-256) - Synthetic
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592
+
+## URLs
+https://198.51.100.25:8443/upload
+http://203.0.113.10/payload.bin
+https://malware-delivery.example.com/stage2.ps1
+
+## CVEs
+CVE-2024-3400
+CVE-2023-44228
+CVE-2021-44228

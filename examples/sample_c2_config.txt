@@ -1,0 +1,36 @@
+# Sample C2 Configuration File - FOR TESTING ONLY
+# This is a synthetic test file for demonstrating CABTA's text analysis capabilities
+# No real infrastructure is referenced
+
+[beacon_config]
+server = 203.0.113.50
+port = 443
+callback_interval = 60
+jitter = 25
+
+[http_config]
+user_agent = Mozilla/5.0 (Windows NT 10.0; Win64; x64)
+uri = /api/v2/status
+method = GET
+
+[dns_tunnel]
+domain = data.example-c2.com
+encoding = base64
+
+[persistence]
+registry_key = HKCU\Software\Microsoft\Windows\CurrentVersion\Run
+scheduled_task = WindowsUpdateCheck
+
+[credentials]
+target = lsass.exe
+method = minidump
+
+[exfiltration]
+protocol = https
+endpoint = https://198.51.100.25:8443/upload
+chunk_size = 4096
+
+[lateral_movement]
+protocol = smb
+target_share = \\192.168.1.0/24\ADMIN$
+tool = psexec
