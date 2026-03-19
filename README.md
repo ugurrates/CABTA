@@ -12,15 +12,17 @@ CABTA is a comprehensive, local-first security analysis platform designed for SO
 
 ## Screenshots
 
-| Dashboard | IOC Investigation |
-|:---------:|:-----------------:|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![IOC](docs/screenshots/ioc_investigation.png) |
+| Dashboard | Settings |
+|:---------:|:--------:|
+| ![Dashboard](docs/screenshots/dashboard_full.png) | ![Settings](docs/screenshots/settings.png) |
 
 | File Analysis | Email Forensics |
 |:------------:|:---------------:|
 | ![File](docs/screenshots/file_analysis.png) | ![Email](docs/screenshots/email_forensics.png) |
 
-> **Note:** Add your own screenshots to `docs/screenshots/` or see the [live demo section](#quick-start) to run locally.
+| IOC Investigation | Email Analysis Result |
+|:-----------------:|:--------------------:|
+| ![IOC](docs/screenshots/ioc_investigation.png) | ![Email Result](docs/screenshots/email_result.png) |
 
 ---
 
