@@ -1,0 +1,86 @@
+# ============================================
+# Blue Team Assistant - .gitignore
+# ============================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# --- Virtual Environments ---
+venv/
+.venv/
+env/
+.env/
+
+# --- Sensitive Configuration ---
+config.yaml
+!config.yaml.example
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+
+# --- IDE / Editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Session / Analysis Data ---
+session_data.json
+ioc_result.json
+ioc_session.json
+ps.json
+
+# --- Uploaded / Temp Files ---
+uploads/
+temp/
+tmp/
+*.tmp
+nul
+
+# --- Test Artifacts ---
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# --- Local Settings ---
+.claude/
+
+# --- OS Files ---
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# --- Data files that may contain analysis results ---
+data/analyses/
+data/reports/
+data/uploads/
+data/cases/
+data/sessions/
+
+# --- Node (if MCP servers use npm) ---
+node_modules/
+package-lock.json
+
+# --- Docker ---
+docker-compose.override.yml

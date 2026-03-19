@@ -1,0 +1,1611 @@
+{# Author: Ugur Ates #}
+{# Report View - Comprehensive SOC-analyst-grade report for IOC, File, and Email analysis #}
+{% extends "base.html" %}
+
+{% block title %}Report - {{ job.id | default('N/A') | e }} - Blue Team Assistant{% endblock %}
+{% block page_title %}Analysis Report{% endblock %}
+{% block page_subtitle %}<span class="page-subtitle">{{ job.id | default('') | e | truncate(16) }}</span>{% endblock %}
+
+{% block extra_head %}
+<style>
+    .score-gauge { position: relative; width: 160px; height: 160px; }
+    .score-gauge canvas { width: 100%; height: 100%; }
+    .score-gauge .score-value {
+        position: absolute; top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 2.2rem; font-weight: 700; color: var(--text-primary);
+    }
+    .score-gauge .score-label {
+        position: absolute; bottom: 10px; left: 50%;
+        transform: translateX(-50%);
+        font-size: 0.75rem; text-transform: uppercase;
+        letter-spacing: 0.05em; color: var(--text-secondary); white-space: nowrap;
+    }
+    .detail-section {
+        border-left: 3px solid var(--color-primary, #3b82f6);
+        padding-left: 1rem; margin-bottom: 1.5rem;
+    }
+    .detail-section:last-child { margin-bottom: 0; }
+    .source-score-bar {
+        display: inline-block; height: 6px; border-radius: 3px;
+        background: #dc3545; vertical-align: middle; margin-left: 6px;
+    }
+    .source-score-bar.score-clean  { background: #28a745; }
+    .source-score-bar.score-medium { background: #ffc107; }
+    .source-score-bar.score-high   { background: #dc3545; }
+    .rule-tab-content pre {
+        background-color: var(--bg-tertiary, #1e2230);
+        border: 1px solid var(--border-color, #2d3748);
+        border-radius: 6px; padding: 1rem; overflow-x: auto;
+        max-height: 400px; font-size: 0.8rem; line-height: 1.5;
+        color: var(--text-primary, #e2e8f0); margin-bottom: 0;
+    }
+    .rule-tab-content .tab-pane { padding-top: 0.75rem; }
+    .copy-btn { position: absolute; top: 0.5rem; right: 0.5rem; font-size: 0.75rem; opacity: 0.7; }
+    .copy-btn:hover { opacity: 1; }
+    .rule-wrapper { position: relative; }
+    .kv-table td:first-child {
+        width: 200px; font-weight: 600;
+        color: var(--text-secondary, #94a3b8); font-size: 0.82rem; white-space: nowrap;
+    }
+    .kv-table td:last-child {
+        font-family: 'Courier New', monospace;
+        font-size: 0.82rem; word-break: break-all; color: var(--text-primary, #e2e8f0);
+    }
+    .llm-analysis-text { white-space: pre-wrap; line-height: 1.7; color: var(--text-primary, #e2e8f0); }
+    .card-header-collapsible { cursor: pointer; user-select: none; }
+    .card-header-collapsible:hover { background-color: rgba(255,255,255,0.03); }
+    .mitre-badge {
+        display: inline-block; background: rgba(59,130,246,0.15);
+        border: 1px solid rgba(59,130,246,0.3); color: #93c5fd;
+        border-radius: 4px; padding: 2px 8px; font-size: 0.75rem; font-family: monospace;
+    }
+    .auth-pass    { color: #28a745; font-weight: 600; }
+    .auth-fail    { color: #dc3545; font-weight: 600; }
+    .auth-neutral { color: var(--text-secondary, #94a3b8); }
+    .yara-match-card {
+        background: var(--bg-tertiary, #1e2230);
+        border: 1px solid var(--border-color, #2d3748);
+        border-left: 3px solid #f59e0b;
+        border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 0.75rem;
+    }
+    .score-pill {
+        display: inline-flex; align-items: center; gap: 6px;
+        background: var(--bg-tertiary, #1e2230);
+        border: 1px solid var(--border-color, #2d3748);
+        border-radius: 20px; padding: 4px 12px; font-size: 0.8rem; margin: 3px;
+    }
+    .score-pill .pill-value { font-weight: 700; font-size: 0.9rem; }
+    @media print {
+        .no-print { display: none !important; }
+        .card { border: 1px solid #ccc !important; }
+    }
+</style>
+{% endblock %}
+
+{# ── Prepare result data ── #}
+{% set result = job.result if job.result is mapping else {} %}
+{% set target_display = job.params.value if job.params is mapping and job.params.value
+    else (job.params.filename if job.params is mapping and job.params.filename
+    else (job.id | default('N/A'))) %}
+{% set analysis_type = job.analysis_type | default('N/A') %}
+{# Verdict: result.verdict first, then job.verdict, never empty #}
+{% set _raw_verdict = result.verdict | default(job.verdict | default('')) %}
+{% set verdict = (_raw_verdict | string | lower) if _raw_verdict else 'unknown' %}
+
+{# Threat score: IOC uses threat_score, File/Email use composite_score or base_phishing_score #}
+{% set threat_score = result.threat_score
+    | default(result.composite_score
+    | default(result.base_phishing_score
+    | default(job.score | default(0)))) | int %}
+
+{# Core fields #}
+{% set sources          = result.sources | default({}) %}
+{% set llm_analysis     = result.llm_analysis | default({}) %}
+{% set detection_rules  = result.detection_rules | default({}) %}
+{% set recommendations  = result.recommendations | default([]) %}
+{% set mitre_mapping    = result.mitre_mapping | default([]) %}
+{% set ioc_value        = result.ioc | default('') %}
+{% set ioc_type         = result.ioc_type | default('') %}
+{% set sources_checked  = result.sources_checked | default(0) %}
+{% set sources_flagged  = result.sources_flagged | default(0) %}
+
+{# File-specific #}
+{% set file_info          = result.file_info | default({}) %}
+{% set hashes             = result.hashes | default({}) %}
+{% set static_analysis    = result.static_analysis | default({}) %}
+{% set entropy_analysis   = result.entropy_analysis | default({}) %}
+{% set packer_detection   = result.packer_detection | default({}) %}
+{% set capabilities       = result.capabilities | default([]) %}
+{% set string_analysis    = result.string_analysis | default({}) %}
+{% set yara_analysis      = result.yara_analysis | default({}) %}
+{% set shellcode_detection = result.shellcode_detection | default({}) %}
+{% set sandbox_analysis   = result.sandbox_analysis | default({}) %}
+{% set scoring            = result.scoring | default({}) %}
+{% set overlay_data       = result.overlay_data | default({}) %}
+{% set obfuscated_strings = result.obfuscated_strings | default([]) %}
+{% set extracted_iocs     = result.iocs | default(result.extracted_iocs | default({})) %}
+
+{# Email-specific #}
+{% set email_data        = result.email_data | default({}) %}
+{% set advanced_analysis = result.advanced_analysis | default({}) %}
+{% set forensics         = result.forensics | default({}) %}
+
+{% block content %}
+<!-- Back / Actions bar -->
+<div class="d-flex justify-content-between align-items-center mb-4 no-print">
+    <a href="/history" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Back to History
+    </a>
+    <div>
+        <button class="btn btn-outline-primary me-1" id="btnExportReportJson" title="Export JSON">
+            <i class="bi bi-filetype-json me-1"></i>Export JSON
+        </button>
+        <button class="btn btn-outline-primary" onclick="window.print()" title="Print report">
+            <i class="bi bi-printer me-1"></i>Print
+        </button>
+    </div>
+</div>
+
+<!-- Report Header Card -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row align-items-center">
+            <div class="col-auto text-center">
+                <div class="score-gauge mx-auto">
+                    <canvas id="scoreGauge"></canvas>
+                    <div class="score-value" id="scoreValue">{{ threat_score }}</div>
+                    <div class="score-label">Threat Score</div>
+                </div>
+            </div>
+            <div class="col">
+                <div class="d-flex align-items-center mb-2 flex-wrap gap-2">
+                    <h3 class="mb-0 me-2" style="color: var(--text-primary);">{{ target_display | e }}</h3>
+                    {% if verdict == 'malicious' %}
+                        <span class="verdict-badge verdict-malicious fs-6">Malicious</span>
+                    {% elif verdict == 'suspicious' %}
+                        <span class="verdict-badge verdict-suspicious fs-6">Suspicious</span>
+                    {% elif verdict == 'clean' %}
+                        <span class="verdict-badge verdict-clean fs-6">Clean</span>
+                    {% else %}
+                        <span class="verdict-badge verdict-unknown fs-6">{{ verdict | e | title }}</span>
+                    {% endif %}
+                </div>
+                <!-- Quick stats pills -->
+                <div class="row g-2 mb-2">
+                    {% if sources_checked %}
+                    <div class="col-auto">
+                        <div class="score-pill">
+                            <i class="bi bi-shield-check" style="color:#3b82f6;"></i>
+                            <span>{{ sources_flagged }}/{{ sources_checked }} sources flagged</span>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if ioc_value %}
+                    <div class="col-auto">
+                        <div class="score-pill">
+                            <i class="bi bi-bullseye" style="color:#f59e0b;"></i>
+                            <span>{{ ioc_value | e }}</span>
+                            {% if ioc_type %}<span class="badge badge-info">{{ ioc_type | e }}</span>{% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if file_info and (file_info.filename or file_info.name) %}
+                    <div class="col-auto">
+                        <div class="score-pill">
+                            <i class="bi bi-file-earmark-binary" style="color:#a78bfa;"></i>
+                            <span>{{ (file_info.filename | default(file_info.name)) | e }}</span>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if email_data and email_data.subject %}
+                    <div class="col-auto">
+                        <div class="score-pill">
+                            <i class="bi bi-envelope" style="color:#34d399;"></i>
+                            <span>{{ email_data.subject | e | truncate(60) }}</span>
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                <!-- Metadata row -->
+                <div class="row g-3" style="color: var(--text-secondary); font-size: 0.9rem;">
+                    <div class="col-auto">
+                        <i class="bi bi-hash me-1"></i><strong>ID:</strong>
+                        <code>{{ job.id | default('N/A') | e }}</code>
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-tag me-1"></i><strong>Type:</strong> {{ analysis_type | e }}
+                    </div>
+                    <div class="col-auto">
+                        <i class="bi bi-calendar me-1"></i><strong>Date:</strong> {{ job.created_at | default('N/A') | e }}
+                    </div>
+                    {% if job.completed_at %}
+                    <div class="col-auto">
+                        <i class="bi bi-check2-circle me-1"></i><strong>Completed:</strong> {{ job.completed_at | e }}
+                    </div>
+                    {% endif %}
+                    <div class="col-auto">
+                        {% if job.status == 'completed' %}<span class="badge badge-success">Completed</span>
+                        {% elif job.status == 'running' %}<span class="badge badge-primary">Running</span>
+                        {% elif job.status == 'failed' %}<span class="badge badge-danger">Failed</span>
+                        {% else %}<span class="badge badge-info">{{ job.status | default('N/A') | e }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Executive Summary -->
+{% set summary = result.summary | default(result.executive_summary | default('')) %}
+{% if summary %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-journal-text me-2"></i>Executive Summary</h5>
+    </div>
+    <div class="card-body">
+        <p style="color: var(--text-primary); white-space: pre-wrap; margin-bottom:0;">{{ summary | e }}</p>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ EMAIL DATA ════════════════════════════════════════════════ -->
+{% if email_data and email_data | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#emailDataCollapse" aria-expanded="true">
+        <h5 class="mb-0"><i class="bi bi-envelope-open me-2"></i>Email Data</h5>
+        <i class="bi bi-chevron-up collapse-chevron"></i>
+    </div>
+    <div class="collapse show" id="emailDataCollapse">
+        <div class="card-body p-0">
+            <table class="table table-sm mb-0 kv-table">
+                <tbody>
+                    {% if email_data.subject %}<tr><td><i class="bi bi-chat-left-text me-1"></i>Subject</td><td>{{ email_data.subject | e }}</td></tr>{% endif %}
+                    {% if email_data.from or email_data.sender %}<tr><td><i class="bi bi-person me-1"></i>From</td><td>{{ (email_data.from | default(email_data.sender)) | e }}</td></tr>{% endif %}
+                    {% if email_data.to or email_data.recipients %}<tr><td><i class="bi bi-people me-1"></i>To</td><td>{{ (email_data.to | default(email_data.recipients)) | e }}</td></tr>{% endif %}
+                    {% if email_data.date %}<tr><td><i class="bi bi-calendar me-1"></i>Date</td><td>{{ email_data.date | e }}</td></tr>{% endif %}
+                    {% if email_data.reply_to %}<tr><td><i class="bi bi-reply me-1"></i>Reply-To</td><td>{{ email_data.reply_to | e }}</td></tr>{% endif %}
+                    {% if email_data.message_id %}<tr><td><i class="bi bi-hash me-1"></i>Message-ID</td><td style="font-family:monospace;word-break:break-all;">{{ email_data.message_id | e }}</td></tr>{% endif %}
+                    {% if email_data.x_mailer %}<tr><td><i class="bi bi-envelope-at me-1"></i>X-Mailer</td><td>{{ email_data.x_mailer | e }}</td></tr>{% endif %}
+                    {% if email_data.content_type %}<tr><td><i class="bi bi-file-text me-1"></i>Content-Type</td><td>{{ email_data.content_type | e }}</td></tr>{% endif %}
+                    {% if email_data.attachments %}
+                    <tr><td><i class="bi bi-paperclip me-1"></i>Attachments</td>
+                        <td>{% if email_data.attachments is iterable and email_data.attachments is not string %}{% for att in email_data.attachments %}<span class="badge badge-warning me-1">{{ att | e }}</span>{% endfor %}{% else %}{{ email_data.attachments | e }}{% endif %}</td></tr>
+                    {% endif %}
+                    {% if email_data.urls %}
+                    <tr><td><i class="bi bi-link me-1"></i>URLs</td>
+                        <td>{% if email_data.urls is iterable and email_data.urls is not string %}<ul class="mb-0 ps-3">{% for url in email_data.urls %}<li><code style="word-break:break-all;font-size:0.8rem;">{{ url | e }}</code></li>{% endfor %}</ul>{% else %}{{ email_data.urls | e }}{% endif %}</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% set auth = email_data.authentication | default(forensics.authentication | default(advanced_analysis.authentication | default({}))) %}
+{% if auth and auth | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-shield-lock me-2"></i>Email Authentication</h5>
+    </div>
+    <div class="card-body">
+        <div class="d-flex flex-wrap gap-2">
+            {% for check_name, check_val in auth.items() %}
+            <div class="score-pill">
+                {# Handle nested dict {status, details} or simple value #}
+                {% if check_val is mapping %}
+                    {% set cv = (check_val.status | default(check_val.result | default('')) | string | lower) %}
+                    {% set details = check_val.details | default('') %}
+                {% else %}
+                    {% set cv = check_val | string | lower %}
+                    {% set details = '' %}
+                {% endif %}
+                {% if cv in ['pass', 'passed', 'true', '1', 'yes'] %}
+                    <i class="bi bi-check-circle-fill auth-pass"></i>
+                    <span class="auth-pass">{{ check_name | replace('_',' ') | upper | e }}</span>
+                    {% if details %}<small class="text-muted ms-1">({{ details | e }})</small>{% endif %}
+                {% elif cv in ['fail', 'failed', 'false', '0', 'no', 'none', 'softfail'] %}
+                    <i class="bi bi-x-circle-fill auth-fail"></i>
+                    <span class="auth-fail">{{ check_name | replace('_',' ') | upper | e }}</span>
+                    {% if details %}<small class="text-muted ms-1">({{ details | e }})</small>{% endif %}
+                {% else %}
+                    <i class="bi bi-question-circle auth-neutral"></i>
+                    <span class="auth-neutral">{{ check_name | replace('_',' ') | upper | e }}: {{ cv | e }}</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endif %}
+
+<!-- ══ FILE INFO ═════════════════════════════════════════════════ -->
+{% if file_info and file_info | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#fileInfoCollapse" aria-expanded="true">
+        <h5 class="mb-0"><i class="bi bi-file-earmark-binary me-2"></i>File Information</h5>
+        <i class="bi bi-chevron-up collapse-chevron"></i>
+    </div>
+    <div class="collapse show" id="fileInfoCollapse">
+        <div class="card-body p-0">
+            <table class="table table-sm mb-0 kv-table">
+                <tbody>
+                    {% if file_info.filename or file_info.name %}<tr><td><i class="bi bi-file me-1"></i>Filename</td><td>{{ (file_info.filename | default(file_info.name)) | e }}</td></tr>{% endif %}
+                    {% if file_info.file_type or file_info.type %}<tr><td><i class="bi bi-file-earmark me-1"></i>File Type</td><td>{{ (file_info.file_type | default(file_info.type)) | e }}</td></tr>{% endif %}
+                    {% if file_info.size or file_info.file_size %}<tr><td><i class="bi bi-hdd me-1"></i>Size</td><td>{{ (file_info.size | default(file_info.file_size)) | e }} bytes</td></tr>{% endif %}
+                    {% if file_info.magic %}<tr><td><i class="bi bi-magic me-1"></i>Magic</td><td>{{ file_info.magic | e }}</td></tr>{% endif %}
+                    {% if file_info.mime_type or file_info.mime %}<tr><td><i class="bi bi-filetype-raw me-1"></i>MIME</td><td>{{ (file_info.mime_type | default(file_info.mime)) | e }}</td></tr>{% endif %}
+                    {% if file_info.architecture %}<tr><td><i class="bi bi-cpu me-1"></i>Architecture</td><td>{{ file_info.architecture | e }}</td></tr>{% endif %}
+                    {% if file_info.compiler or file_info.compiled_with %}<tr><td><i class="bi bi-tools me-1"></i>Compiler</td><td>{{ (file_info.compiler | default(file_info.compiled_with)) | e }}</td></tr>{% endif %}
+                    {% if file_info.timestamp or file_info.compile_time %}<tr><td><i class="bi bi-clock me-1"></i>Compile Time</td><td>{{ (file_info.timestamp | default(file_info.compile_time)) | e }}</td></tr>{% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ HASHES ════════════════════════════════════════════════════ -->
+{% if hashes and hashes | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-fingerprint me-2"></i>File Hashes</h5>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0 kv-table">
+            <tbody>
+                {% if hashes.md5 %}
+                <tr>
+                    <td><span class="badge" style="background:#6366f1;">MD5</span></td>
+                    <td><code>{{ hashes.md5 | e }}</code>
+                    <button class="btn btn-sm btn-outline-secondary ms-2 py-0 no-print"
+                            data-copy="{{ hashes.md5 | e }}" title="Copy MD5">
+                        <i class="bi bi-clipboard"></i>
+                    </button></td>
+                </tr>
+                {% endif %}
+                {% if hashes.sha1 %}
+                <tr>
+                    <td><span class="badge" style="background:#8b5cf6;">SHA1</span></td>
+                    <td><code>{{ hashes.sha1 | e }}</code>
+                    <button class="btn btn-sm btn-outline-secondary ms-2 py-0 no-print"
+                            data-copy="{{ hashes.sha1 | e }}" title="Copy SHA1">
+                        <i class="bi bi-clipboard"></i>
+                    </button></td>
+                </tr>
+                {% endif %}
+                {% if hashes.sha256 %}
+                <tr>
+                    <td><span class="badge" style="background:#7c3aed;">SHA256</span></td>
+                    <td><code style="word-break:break-all;">{{ hashes.sha256 | e }}</code>
+                    <button class="btn btn-sm btn-outline-secondary ms-2 py-0 no-print"
+                            data-copy="{{ hashes.sha256 | e }}" title="Copy SHA256">
+                        <i class="bi bi-clipboard"></i>
+                    </button></td>
+                </tr>
+                {% endif %}
+                {% if hashes.sha512 %}
+                <tr>
+                    <td><span class="badge" style="background:#5b21b6;">SHA512</span></td>
+                    <td><code style="word-break:break-all;">{{ hashes.sha512 | e }}</code>
+                    <button class="btn btn-sm btn-outline-secondary ms-2 py-0 no-print"
+                            data-copy="{{ hashes.sha512 | e }}" title="Copy SHA512">
+                        <i class="bi bi-clipboard"></i>
+                    </button></td>
+                </tr>
+                {% endif %}
+                {% if hashes.ssdeep %}
+                <tr><td><span class="badge" style="background:#4c1d95;">SSDEEP</span></td>
+                    <td><code style="word-break:break-all;">{{ hashes.ssdeep | e }}</code></td></tr>
+                {% endif %}
+                {% if hashes.imphash %}
+                <tr><td><span class="badge" style="background:#3b0764;">IMPHASH</span></td>
+                    <td><code>{{ hashes.imphash | e }}</code></td></tr>
+                {% endif %}
+                {% if hashes.tlsh %}
+                <tr><td><span class="badge" style="background:#065f46;">TLSH</span></td>
+                    <td><code style="word-break:break-all;">{{ hashes.tlsh | e }}</code></td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ THREAT INTELLIGENCE SOURCES — sources is a DICT keyed by source name ══ -->
+{% if sources and sources | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#sourcesCollapse" aria-expanded="true">
+        <h5 class="mb-0">
+            <i class="bi bi-shield-check me-2"></i>Threat Intelligence Sources
+            {% if sources_checked %}<span class="badge badge-secondary ms-2">{{ sources_checked }} checked</span>{% endif %}
+            {% if sources_flagged %}<span class="badge badge-danger ms-1">{{ sources_flagged }} flagged</span>{% endif %}
+        </h5>
+        <i class="bi bi-chevron-up collapse-chevron"></i>
+    </div>
+    <div class="collapse show" id="sourcesCollapse">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr style="background-color: var(--bg-tertiary);">
+                            <th style="width:160px;">Source</th>
+                            <th style="width:90px;">Status</th>
+                            <th style="width:110px;">Score</th>
+                            <th>Details</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {# FIX: sources is a DICT — iterate with .items() not as list #}
+                        {% for source_name, source_data in sources.items() %}
+                        <tr>
+                            <td><strong style="color:var(--text-primary);">{{ source_name | e | title }}</strong></td>
+                            <td>
+                                {% set src_status = source_data.status | default('') | string %}
+                                {% set src_score  = source_data.score  | default(0) | int %}
+                                {% if src_status in ['found','detected','flagged'] or src_score >= 50 %}
+                                    <span class="badge badge-danger">Flagged</span>
+                                {% elif src_status in ['not found','clean','ok'] or (src_score == 0 and src_status) %}
+                                    <span class="badge badge-success">Clean</span>
+                                {% elif src_status %}
+                                    <span class="badge badge-warning">{{ src_status | e }}</span>
+                                {% else %}
+                                    <span class="badge badge-secondary">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if source_data.score is defined %}
+                                    {% set s = source_data.score | int %}
+                                    <span style="color:{% if s>=70 %}#dc3545{% elif s>=40 %}#ffc107{% else %}#28a745{% endif %};font-weight:600;">{{ s }}</span>
+                                    <span class="source-score-bar {% if s>=70 %}score-high{% elif s>=40 %}score-medium{% else %}score-clean{% endif %}"
+                                          style="width:{{ [s,60] | min }}px;"></span>
+                                {% else %}<span style="color:var(--text-secondary);">&#8212;</span>{% endif %}
+                            </td>
+                            <td style="font-size:0.82rem;color:var(--text-secondary);">
+                                {% for key, val in source_data.items() %}
+                                    {% if key not in ['status','score'] %}
+                                    <span class="me-2">
+                                        <span style="color:var(--text-muted);font-size:0.75rem;">{{ key | e }}:</span>
+                                        {% if val is mapping %}
+                                            <span style="color:var(--text-primary);">{{ val | tojson }}</span>
+                                        {% elif val is iterable and val is not string %}
+                                            <span style="color:var(--text-primary);">{{ val | join(', ') | e }}</span>
+                                        {% else %}
+                                            <span style="color:var(--text-primary);">{{ val | e }}</span>
+                                        {% endif %}
+                                    </span>
+                                    {% endif %}
+                                {% endfor %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ STATIC ANALYSIS (File) ════════════════════════════════════ -->
+{% if static_analysis and static_analysis | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#staticCollapse" aria-expanded="true">
+        <h5 class="mb-0"><i class="bi bi-cpu me-2"></i>Static Analysis</h5>
+        <i class="bi bi-chevron-up collapse-chevron"></i>
+    </div>
+    <div class="collapse show" id="staticCollapse">
+        <div class="card-body">
+            {% if static_analysis.imports or static_analysis.imported_dlls %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);">Imported DLLs / Functions</h6>
+                {% set imports_val = static_analysis.imports | default(static_analysis.imported_dlls | default([])) %}
+                {% if imports_val is iterable and imports_val is not string %}
+                    {% for imp in imports_val %}<span class="badge badge-secondary me-1 mb-1" style="font-family:monospace;font-size:0.75rem;">{{ imp | e }}</span>{% endfor %}
+                {% else %}<code>{{ imports_val | e }}</code>{% endif %}
+            </div>
+            {% endif %}
+            {% if static_analysis.sections %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);">PE Sections</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead><tr style="background-color:var(--bg-tertiary);"><th>Name</th><th>Virtual Size</th><th>Raw Size</th><th>Entropy</th><th>Characteristics</th></tr></thead>
+                        <tbody>
+                        {% for sec in static_analysis.sections %}
+                        <tr>
+                            <td><code>{{ sec.name | default('') | e }}</code></td>
+                            <td>{{ sec.virtual_size | default(sec.vsize | default('')) | e }}</td>
+                            <td>{{ sec.raw_size | default(sec.size | default('')) | e }}</td>
+                            <td>{% set ent = sec.entropy | default(0) | float %}<span style="color:{% if ent > 7.0 %}#dc3545{% elif ent > 6.5 %}#ffc107{% else %}var(--text-primary){% endif %};">{{ '%.2f' | format(ent) }}</span></td>
+                            <td style="font-size:0.75rem;">{{ sec.characteristics | default('') | e }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+            {% if static_analysis.exports %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);">Exports</h6>
+                {% for exp in static_analysis.exports %}<span class="badge badge-info me-1 mb-1" style="font-family:monospace;font-size:0.75rem;">{{ exp | e }}</span>{% endfor %}
+            </div>
+            {% endif %}
+            {# ── Text-specific structured sections ── #}
+            {% set text_special_keys = ['imports','imported_dlls','sections','exports','c2_patterns','ip_addresses','urls','domains','hashes_found','emails_found','cves_found','encoded_content','credential_indicators','threat_indicators','contributing_factors','iocs','summary','file_stats'] %}
+
+            {# ── C2 Patterns ── #}
+            {% if static_analysis.c2_patterns %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);"><i class="bi bi-broadcast me-1"></i>C2 Patterns <span class="badge bg-danger ms-1">{{ static_analysis.c2_patterns | length }}</span></h6>
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>Severity</th><th>Pattern</th><th>Description</th><th>Matches</th><th>MITRE</th></tr></thead>
+                    <tbody>
+                    {% for p in static_analysis.c2_patterns %}
+                    <tr>
+                        <td><span class="badge {% if p.severity == 'critical' %}bg-danger{% elif p.severity == 'high' %}bg-warning text-dark{% else %}bg-info{% endif %}">{{ p.severity | upper | e }}</span></td>
+                        <td><code>{{ p.pattern_name | default('') | e }}</code></td>
+                        <td>{{ p.description | default('') | e }}</td>
+                        <td>{{ p.match_count | default(0) }}</td>
+                        <td>{% if p.mitre %}<span class="badge bg-secondary">{{ p.mitre | e }}</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
+            {# ── IP Addresses ── #}
+            {% if static_analysis.ip_addresses %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);"><i class="bi bi-globe me-1"></i>IP Addresses <span class="badge bg-info ms-1">{{ static_analysis.ip_addresses | length }}</span></h6>
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>IP</th><th>Port</th><th>Private</th><th>Suspicious</th><th>Reasons</th></tr></thead>
+                    <tbody>
+                    {% for ip in static_analysis.ip_addresses %}
+                    <tr class="{% if ip.suspicious %}table-warning{% endif %}">
+                        <td><code>{{ ip.ip | e }}</code></td>
+                        <td>{{ ip.port | default('-') }}</td>
+                        <td>{% if ip.is_private %}<i class="bi bi-house text-muted"></i>{% else %}<i class="bi bi-globe2 text-warning"></i>{% endif %}</td>
+                        <td>{% if ip.suspicious %}<span class="badge bg-danger">Yes</span>{% else %}<span class="badge bg-success">No</span>{% endif %}</td>
+                        <td>{% for r in ip.reasons | default([]) %}<span class="badge bg-secondary me-1">{{ r | e }}</span>{% endfor %}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
+            {# ── URLs ── #}
+            {% if static_analysis.urls %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);"><i class="bi bi-link-45deg me-1"></i>URLs <span class="badge bg-info ms-1">{{ static_analysis.urls | length }}</span></h6>
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>URL</th><th>Host</th><th>Suspicious</th><th>Reasons</th></tr></thead>
+                    <tbody>
+                    {% for u in static_analysis.urls %}
+                    <tr class="{% if u.suspicious %}table-warning{% endif %}">
+                        <td style="max-width:400px;word-break:break-all;"><code>{{ u.url | e | truncate(80) }}</code></td>
+                        <td><code>{{ u.host | default('') | e }}</code></td>
+                        <td>{% if u.suspicious %}<span class="badge bg-danger">Yes</span>{% else %}<span class="badge bg-success">No</span>{% endif %}</td>
+                        <td>{% for r in u.reasons | default([]) %}<span class="badge bg-secondary me-1">{{ r | e }}</span>{% endfor %}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
+            {# ── Domains ── #}
+            {% if static_analysis.domains %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);"><i class="bi bi-diagram-3 me-1"></i>Domains <span class="badge bg-info ms-1">{{ static_analysis.domains | length }}</span></h6>
+                {% for d in static_analysis.domains %}
+                <span class="badge {% if d.suspicious %}bg-danger{% else %}bg-secondary{% endif %} me-1 mb-1"><code>{{ d.domain | e }}</code></span>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {# ── Encoded Content ── #}
+            {% if static_analysis.encoded_content %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);"><i class="bi bi-file-earmark-lock me-1"></i>Encoded Content <span class="badge bg-warning text-dark ms-1">{{ static_analysis.encoded_content | length }}</span></h6>
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>Severity</th><th>Type</th><th>Description</th><th>Count</th></tr></thead>
+                    <tbody>
+                    {% for e_item in static_analysis.encoded_content %}
+                    <tr>
+                        <td><span class="badge {% if e_item.severity == 'critical' %}bg-danger{% elif e_item.severity == 'high' %}bg-warning text-dark{% else %}bg-info{% endif %}">{{ e_item.severity | upper | e }}</span></td>
+                        <td><code>{{ e_item.pattern_name | default('') | e }}</code></td>
+                        <td>{{ e_item.description | default('') | e }}</td>
+                        <td>{{ e_item.match_count | default(0) }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
+            {# ── Credential Indicators ── #}
+            {% if static_analysis.credential_indicators %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);"><i class="bi bi-key me-1"></i>Credential Indicators <span class="badge bg-danger ms-1">{{ static_analysis.credential_indicators | length }}</span></h6>
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr><th>Severity</th><th>Description</th><th>Count</th></tr></thead>
+                    <tbody>
+                    {% for c in static_analysis.credential_indicators %}
+                    <tr>
+                        <td><span class="badge {% if c.severity == 'critical' %}bg-danger{% elif c.severity == 'high' %}bg-warning text-dark{% else %}bg-info{% endif %}">{{ c.severity | upper | e }}</span></td>
+                        <td>{{ c.description | default('') | e }}</td>
+                        <td>{{ c.match_count | default(0) }}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% endif %}
+
+            {# ── Threat Indicators ── #}
+            {% if static_analysis.threat_indicators and static_analysis.threat_indicators is iterable and static_analysis.threat_indicators is not string %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);"><i class="bi bi-exclamation-triangle me-1"></i>Threat Indicators</h6>
+                {% for t in static_analysis.threat_indicators %}
+                    {% if t is mapping %}
+                        <span class="badge bg-warning text-dark me-1 mb-1">{{ t.description | default(t | string | truncate(60)) | e }}</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark me-1 mb-1">{{ t | e }}</span>
+                    {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {# ── Contributing Factors ── #}
+            {% if static_analysis.contributing_factors and static_analysis.contributing_factors is iterable and static_analysis.contributing_factors is not string %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);"><i class="bi bi-list-check me-1"></i>Contributing Factors</h6>
+                <ul class="mb-0" style="padding-left:1.2rem;">
+                {% for f in static_analysis.contributing_factors %}
+                    <li style="font-size:0.85rem;">{{ f | e }}</li>
+                {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {# ── Summary ── #}
+            {% if static_analysis.summary and static_analysis.summary is mapping %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);"><i class="bi bi-clipboard-data me-1"></i>Analysis Summary</h6>
+                <table class="table table-sm mb-0 kv-table"><tbody>
+                {% for k, v in static_analysis.summary.items() %}
+                    <tr><td>{{ k | replace('_',' ') | title | e }}</td><td>{{ v }}</td></tr>
+                {% endfor %}
+                </tbody></table>
+            </div>
+            {% endif %}
+
+            {# ── Generic fallback for remaining keys ── #}
+            {% for key, val in static_analysis.items() %}
+                {% if key not in text_special_keys and key not in ['file_type','analysis_tools','threat_score','verdict','mitre_mapping'] %}
+                <div class="detail-section">
+                    <h6 style="color:var(--text-secondary);">{{ key | replace('_',' ') | title | e }}</h6>
+                    {% if val is mapping %}
+                        <table class="table table-sm mb-0 kv-table"><tbody>{% for k2,v2 in val.items() %}<tr><td>{{ k2|e }}</td><td>{{ v2|e }}</td></tr>{% endfor %}</tbody></table>
+                    {% elif val is iterable and val is not string %}
+                        {% for item in val %}
+                            {% if item is mapping %}
+                                <span class="badge badge-secondary me-1 mb-1">{{ item | tojson | truncate(80) }}</span>
+                            {% else %}
+                                <span class="badge badge-secondary me-1 mb-1">{{ item | e }}</span>
+                            {% endif %}
+                        {% endfor %}
+                    {% else %}<code>{{ val | e }}</code>{% endif %}
+                </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ ENTROPY ANALYSIS ══════════════════════════════════════════ -->
+{% if entropy_analysis and entropy_analysis | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#entropyCollapse" aria-expanded="true">
+        <h5 class="mb-0"><i class="bi bi-graph-up me-2"></i>Entropy Analysis</h5>
+        <i class="bi bi-chevron-up collapse-chevron"></i>
+    </div>
+    <div class="collapse show" id="entropyCollapse">
+        <div class="card-body">
+            {% if entropy_analysis.overall_entropy is defined %}
+            <div class="d-flex flex-wrap gap-3 mb-3">
+                <div class="score-pill">
+                    <span style="color:var(--text-secondary);font-size:0.75rem;">Overall Entropy</span>
+                    {% set oe = entropy_analysis.overall_entropy | float %}
+                    <span class="pill-value" style="color:{% if oe > 7.0 %}#dc3545{% elif oe > 6.0 %}#ffc107{% else %}#28a745{% endif %};">{{ '%.4f' | format(oe) }}</span>
+                </div>
+                {% if entropy_analysis.classification %}
+                <div class="score-pill">
+                    <span style="color:var(--text-secondary);font-size:0.75rem;">Classification</span>
+                    <span class="pill-value">{{ entropy_analysis.classification | e }}</span>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% if entropy_analysis.sections is defined and entropy_analysis.sections is iterable and entropy_analysis.sections is not string %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);">Per-Section Entropy</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead><tr style="background-color:var(--bg-tertiary);"><th>Section</th><th>Entropy</th></tr></thead>
+                        <tbody>
+                        {% for sec in entropy_analysis.sections %}
+                        <tr>
+                            <td><code>{{ sec.name | default(sec.section | default('')) | e }}</code></td>
+                            {% set sent = sec.entropy | default(0) | float %}
+                            <td><span style="color:{% if sent > 7.0 %}#dc3545{% elif sent > 6.0 %}#ffc107{% else %}var(--text-primary){% endif %};font-weight:600;">{{ '%.4f' | format(sent) }}</span></td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+            {% if entropy_analysis.high_entropy_regions is defined and entropy_analysis.high_entropy_regions is iterable and entropy_analysis.high_entropy_regions | length > 0 %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);">High Entropy Regions <span class="badge badge-warning">{{ entropy_analysis.high_entropy_regions | length }}</span></h6>
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead><tr style="background-color:var(--bg-tertiary);"><th>Offset</th><th>Size</th><th>Entropy</th><th>Description</th></tr></thead>
+                        <tbody>
+                        {% for r in entropy_analysis.high_entropy_regions %}
+                        <tr>
+                            <td><code>{{ r.offset | default('') | e }}</code></td>
+                            <td>{{ r.size | default('') | e }}</td>
+                            <td style="color:#dc3545;font-weight:600;">{{ r.entropy | default('') | e }}</td>
+                            <td>{{ r.description | default(r.name | default('')) | e }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+            {% if entropy_analysis.byte_frequency is defined and entropy_analysis.byte_frequency is mapping %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);">Byte Frequency</h6>
+                {% if entropy_analysis.byte_frequency.unique_bytes is defined %}
+                <p style="color:var(--text-primary);font-size:0.85rem;"><strong>Unique Bytes:</strong> {{ entropy_analysis.byte_frequency.unique_bytes | e }}</p>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% if entropy_analysis.interpretation is defined and entropy_analysis.interpretation is mapping %}
+            {% set interp = entropy_analysis.interpretation %}
+            {% if interp.risk_level or interp.description %}
+            <div class="alert {% if interp.risk_level | default('') | lower == 'high' %}alert-danger{% elif interp.risk_level | default('') | lower == 'medium' %}alert-warning{% else %}alert-success{% endif %} py-2" style="background:rgba(0,0,0,0.15);border-color:rgba(255,255,255,0.1);">
+                {% if interp.risk_level %}<strong>Risk Level: {{ interp.risk_level | e }}</strong> {% endif %}
+                {% if interp.description %}{{ interp.description | e }}{% endif %}
+            </div>
+            {% endif %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ PACKER DETECTION ═════════════════════════════════════════ -->
+{% if packer_detection and packer_detection | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#packerCollapse" aria-expanded="true">
+        <h5 class="mb-0"><i class="bi bi-archive me-2"></i>Packer Detection</h5>
+        <i class="bi bi-chevron-up collapse-chevron"></i>
+    </div>
+    <div class="collapse show" id="packerCollapse">
+        <div class="card-body">
+            {% if packer_detection.is_packed is defined %}
+            <div class="text-center mb-3">
+                {% if packer_detection.is_packed %}
+                <span class="badge bg-danger fs-6"><i class="bi bi-exclamation-triangle me-1"></i>Packer Detected</span>
+                {% else %}
+                <span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i>No Packer Detected</span>
+                {% endif %}
+            </div>
+            {% endif %}
+            <table class="table table-sm mb-0 kv-table">
+                <tbody>
+                    {% if packer_detection.packer_name or packer_detection.packer %}
+                    <tr><td><i class="bi bi-archive me-1"></i>Packer Name</td><td><strong>{{ (packer_detection.packer_name | default(packer_detection.packer)) | e }}</strong></td></tr>
+                    {% endif %}
+                    {% if packer_detection.confidence is defined %}
+                    <tr><td><i class="bi bi-speedometer2 me-1"></i>Confidence</td><td>{{ packer_detection.confidence | e }}</td></tr>
+                    {% endif %}
+                    {% if packer_detection.method %}
+                    <tr><td><i class="bi bi-search me-1"></i>Detection Method</td><td>{{ packer_detection.method | e }}</td></tr>
+                    {% endif %}
+                    {% if packer_detection.version %}
+                    <tr><td><i class="bi bi-tag me-1"></i>Version</td><td>{{ packer_detection.version | e }}</td></tr>
+                    {% endif %}
+                    {% if packer_detection.details %}
+                    <tr><td><i class="bi bi-info-circle me-1"></i>Details</td><td>{{ packer_detection.details | e }}</td></tr>
+                    {% endif %}
+                    {% for key, val in packer_detection.items() %}
+                        {% if key not in ['is_packed', 'packer_name', 'packer', 'confidence', 'method', 'version', 'details'] %}
+                        <tr><td>{{ key | replace('_',' ') | title | e }}</td><td>{{ val | e }}</td></tr>
+                        {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ CAPABILITIES ═════════════════════════════════════════════ -->
+{% if capabilities and capabilities | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#capabilitiesCollapse" aria-expanded="true">
+        <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Capabilities
+            <span class="badge badge-info ms-1">{% if capabilities is iterable and capabilities is not string and capabilities is not mapping %}{{ capabilities | length }}{% endif %}</span>
+        </h5>
+        <i class="bi bi-chevron-up collapse-chevron"></i>
+    </div>
+    <div class="collapse show" id="capabilitiesCollapse">
+        <div class="card-body">
+            {% if capabilities is mapping %}
+                {% if capabilities.mitre_techniques is defined and capabilities.mitre_techniques is iterable %}
+                <h6 style="color:var(--text-secondary);">MITRE ATT&CK Techniques</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead><tr style="background-color:var(--bg-tertiary);"><th>ID</th><th>Tactic</th><th>Technique</th><th>Description</th></tr></thead>
+                        <tbody>
+                        {% for t in capabilities.mitre_techniques %}
+                        <tr>
+                            <td><span class="mitre-badge">{{ t.technique_id | default(t.id | default('')) | e }}</span></td>
+                            <td style="color:var(--text-secondary);">{{ t.tactic | default('') | e }}</td>
+                            <td>{{ t.technique | default(t.name | default('')) | e }}</td>
+                            <td style="font-size:0.8rem;color:var(--text-secondary);">{{ t.description | default('') | e }}</td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                    {% for key, val in capabilities.items() %}
+                    <div class="detail-section">
+                        <h6 style="color:var(--text-secondary);">{{ key | replace('_',' ') | title | e }}</h6>
+                        {% if val is iterable and val is not string %}
+                            {% for item in val %}<span class="badge badge-warning me-1 mb-1">{{ item | e }}</span>{% endfor %}
+                        {% else %}<span style="color:var(--text-primary);">{{ val | e }}</span>{% endif %}
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            {% elif capabilities is iterable and capabilities is not string %}
+                {% set has_mitre = [] %}
+                {% for c in capabilities %}{% if c is mapping and (c.tactic is defined or c.technique is defined or c.technique_id is defined) %}{% if has_mitre.append(1) %}{% endif %}{% endif %}{% endfor %}
+                {% if has_mitre | length > 0 %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead><tr style="background-color:var(--bg-tertiary);"><th>ID</th><th>Tactic</th><th>Technique</th><th>Description</th></tr></thead>
+                        <tbody>
+                        {% for c in capabilities %}
+                        {% if c is mapping %}
+                        <tr>
+                            <td><span class="mitre-badge">{{ c.technique_id | default(c.id | default('')) | e }}</span></td>
+                            <td style="color:var(--text-secondary);">{{ c.tactic | default('') | e }}</td>
+                            <td>{{ c.technique | default(c.name | default('')) | e }}</td>
+                            <td style="font-size:0.8rem;color:var(--text-secondary);">{{ c.description | default('') | e }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4">{{ c | e }}</td></tr>
+                        {% endif %}
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="d-flex flex-wrap gap-2">
+                    {% for c in capabilities %}
+                    <span class="badge badge-warning" style="font-size:0.82rem;padding:6px 12px;">{% if c is mapping %}{{ c.name | default(c.description | default(c | tojson)) | e }}{% else %}{{ c | e }}{% endif %}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ SHELLCODE DETECTION ══════════════════════════════════════ -->
+{% if shellcode_detection and shellcode_detection | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#shellcodeCollapse" aria-expanded="true">
+        <h5 class="mb-0"><i class="bi bi-bug me-2"></i>Shellcode Detection</h5>
+        <i class="bi bi-chevron-up collapse-chevron"></i>
+    </div>
+    <div class="collapse show" id="shellcodeCollapse">
+        <div class="card-body">
+            {% set shell_patterns = shellcode_detection.patterns | default(shellcode_detection.detections | default([])) %}
+            {% if shell_patterns is iterable and shell_patterns is not string and shell_patterns | length > 0 %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead><tr style="background-color:var(--bg-tertiary);"><th>Technique</th><th>Offset</th><th>Confidence</th><th>Framework</th></tr></thead>
+                    <tbody>
+                    {% for p in shell_patterns %}
+                    <tr>
+                        {% if p is mapping %}
+                        <td><code>{{ p.technique | default(p.name | default(p.pattern | default(''))) | e }}</code></td>
+                        <td><code>{{ p.offset | default('') | e }}</code></td>
+                        <td>
+                            {% set conf = p.confidence | default('') | string | lower %}
+                            <span class="badge {% if conf == 'high' %}badge-danger{% elif conf == 'medium' %}badge-warning{% else %}badge-info{% endif %}">{{ p.confidence | default('') | e }}</span>
+                        </td>
+                        <td>{{ p.framework | default(p.type | default('')) | e }}</td>
+                        {% else %}
+                        <td colspan="4">{{ p | e }}</td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+                {% for key, val in shellcode_detection.items() %}
+                <div class="detail-section">
+                    <h6 style="color:var(--text-secondary);">{{ key | replace('_',' ') | title | e }}</h6>
+                    {% if val is mapping %}<table class="table table-sm mb-0 kv-table"><tbody>{% for k2,v2 in val.items() %}<tr><td>{{ k2|e }}</td><td>{{ v2|e }}</td></tr>{% endfor %}</tbody></table>
+                    {% elif val is iterable and val is not string %}{% for item in val %}<span class="badge badge-secondary me-1 mb-1">{{ item | e }}</span>{% endfor %}
+                    {% else %}<span style="color:var(--text-primary);">{{ val | e }}</span>{% endif %}
+                </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ OVERLAY DATA ═════════════════════════════════════════════ -->
+{% if overlay_data and overlay_data | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-layers me-2"></i>Overlay Data</h5>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-sm mb-0 kv-table">
+            <tbody>
+                {% if overlay_data.has_overlay is defined %}
+                <tr><td><i class="bi bi-layers me-1"></i>Has Overlay</td>
+                    <td>{% if overlay_data.has_overlay %}<span class="badge badge-warning">Yes</span>{% else %}<span class="badge badge-success">No</span>{% endif %}</td></tr>
+                {% endif %}
+                {% if overlay_data.offset is defined %}
+                <tr><td><i class="bi bi-arrows-expand me-1"></i>Offset</td><td><code>{{ overlay_data.offset | e }}</code></td></tr>
+                {% endif %}
+                {% if overlay_data.size is defined %}
+                <tr><td><i class="bi bi-hdd me-1"></i>Size</td><td>{{ overlay_data.size | e }} bytes</td></tr>
+                {% endif %}
+                {% for key, val in overlay_data.items() %}
+                    {% if key not in ['has_overlay', 'offset', 'size'] %}
+                    <tr><td>{{ key | replace('_',' ') | title | e }}</td><td>{{ val | e }}</td></tr>
+                    {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ EXTRACTED IOCs ═══════════════════════════════════════════ -->
+{% if extracted_iocs and extracted_iocs | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#iocsCollapse" aria-expanded="true">
+        <h5 class="mb-0"><i class="bi bi-bullseye me-2"></i>Extracted IOCs</h5>
+        <i class="bi bi-chevron-up collapse-chevron"></i>
+    </div>
+    <div class="collapse show" id="iocsCollapse">
+        <div class="card-body">
+            {% if extracted_iocs is mapping %}
+                {% for ioc_type, ioc_items in extracted_iocs.items() %}
+                <div class="detail-section">
+                    <h6 style="color:var(--text-secondary);">{{ ioc_type | replace('_',' ') | title | e }}
+                        {% if ioc_items is iterable and ioc_items is not string %}<span class="badge badge-secondary">{{ ioc_items | length }}</span>{% endif %}
+                    </h6>
+                    {% if ioc_items is iterable and ioc_items is not string %}
+                    <div style="max-height:200px;overflow-y:auto;">
+                        {% for item in ioc_items %}
+                        <code style="display:block;font-size:0.8rem;color:var(--text-primary);padding:2px 0;word-break:break-all;">{% if item is mapping %}{{ item.value | default(item.ioc | default(item | tojson)) | e }}{% else %}{{ item | e }}{% endif %}</code>
+                        {% endfor %}
+                    </div>
+                    {% else %}<span style="color:var(--text-primary);">{{ ioc_items | e }}</span>{% endif %}
+                </div>
+                {% endfor %}
+            {% elif extracted_iocs is iterable %}
+                {% for item in extracted_iocs %}
+                <code style="display:block;font-size:0.8rem;color:var(--text-primary);padding:2px 0;">{{ item | e }}</code>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ OBFUSCATED STRINGS ═══════════════════════════════════════ -->
+{% if obfuscated_strings and obfuscated_strings | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#obfStrCollapse" aria-expanded="false">
+        <h5 class="mb-0"><i class="bi bi-shuffle me-2"></i>De-obfuscated Strings
+            <span class="badge badge-warning ms-1">{{ obfuscated_strings | length }}</span>
+        </h5>
+        <i class="bi bi-chevron-down collapse-chevron"></i>
+    </div>
+    <div class="collapse" id="obfStrCollapse">
+        <div class="card-body">
+            <div style="max-height:300px;overflow-y:auto;font-family:monospace;font-size:0.8rem;">
+                {% for s in obfuscated_strings %}
+                <div style="color:var(--text-primary);padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.04);word-break:break-all;">
+                    {% if s is mapping %}{{ s.value | default(s.decoded | default(s.string | default(s | tojson))) | e }}{% else %}{{ s | e }}{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ YARA ANALYSIS ═════════════════════════════════════════════ -->
+{% if yara_analysis and yara_analysis | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#yaraCollapse" aria-expanded="true">
+        <h5 class="mb-0"><i class="bi bi-bug me-2"></i>YARA Analysis</h5>
+        <i class="bi bi-chevron-up collapse-chevron"></i>
+    </div>
+    <div class="collapse show" id="yaraCollapse">
+        <div class="card-body">
+            {% if yara_analysis is mapping %}
+                {% if yara_analysis.matches %}
+                    {% for match in yara_analysis.matches %}
+                    <div class="yara-match-card">
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <i class="bi bi-exclamation-triangle-fill" style="color:#f59e0b;"></i>
+                            <strong style="color:var(--text-primary);">{{ match.rule | default(match.name | default('Unknown Rule')) | e }}</strong>
+                            {% if match.namespace %}<span class="badge badge-warning">{{ match.namespace | e }}</span>{% endif %}
+                        </div>
+                        {% if match.tags %}<div class="mb-1">{% for tag in match.tags %}<span class="badge badge-secondary me-1">{{ tag | e }}</span>{% endfor %}</div>{% endif %}
+                        {% if match.description or match.meta %}<small style="color:var(--text-secondary);">{{ match.description | default(match.meta | default('') | string) | e }}</small>{% endif %}
+                    </div>
+                    {% endfor %}
+                {% elif yara_analysis.matched_rules %}
+                    {% for rule_name in yara_analysis.matched_rules %}
+                    <div class="yara-match-card">
+                        <i class="bi bi-exclamation-triangle-fill me-2" style="color:#f59e0b;"></i>
+                        <strong style="color:var(--text-primary);">{{ rule_name | e }}</strong>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    {% for key, val in yara_analysis.items() %}
+                    <div class="detail-section">
+                        <h6 style="color:var(--text-secondary);">{{ key | replace('_',' ') | title | e }}</h6>
+                        <span style="color:var(--text-primary);">{{ val | e }}</span>
+                    </div>
+                    {% endfor %}
+                {% endif %}
+            {% elif yara_analysis is iterable %}
+                {% for match in yara_analysis %}
+                <div class="yara-match-card">
+                    <i class="bi bi-exclamation-triangle-fill me-2" style="color:#f59e0b;"></i>
+                    <strong style="color:var(--text-primary);">{{ match | e }}</strong>
+                </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ SANDBOX ANALYSIS ══════════════════════════════════════════ -->
+{% if sandbox_analysis and sandbox_analysis | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#sandboxCollapse" aria-expanded="false">
+        <h5 class="mb-0"><i class="bi bi-box me-2"></i>Sandbox Analysis</h5>
+        <i class="bi bi-chevron-down collapse-chevron"></i>
+    </div>
+    <div class="collapse" id="sandboxCollapse">
+        <div class="card-body">
+            {% for key, val in sandbox_analysis.items() %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);">{{ key | replace('_',' ') | title | e }}</h6>
+                {% if val is mapping %}<table class="table table-sm mb-0 kv-table"><tbody>{% for k2,v2 in val.items() %}<tr><td>{{ k2|e }}</td><td>{{ v2|e }}</td></tr>{% endfor %}</tbody></table>
+                {% elif val is iterable and val is not string %}<ul class="mb-0 ps-3">{% for item in val %}<li style="color:var(--text-primary);font-size:0.85rem;">{{ item | e }}</li>{% endfor %}</ul>
+                {% else %}<span style="color:var(--text-primary);">{{ val | e }}</span>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ ADVANCED EMAIL ANALYSIS ═══════════════════════════════════ -->
+{% if advanced_analysis and advanced_analysis | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#advancedCollapse" aria-expanded="true">
+        <h5 class="mb-0"><i class="bi bi-search me-2"></i>Advanced Email Analysis</h5>
+        <i class="bi bi-chevron-up collapse-chevron"></i>
+    </div>
+    <div class="collapse show" id="advancedCollapse">
+        <div class="card-body">
+            {% for key, val in advanced_analysis.items() %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);">{{ key | replace('_',' ') | title | e }}</h6>
+                {% if val is mapping %}
+                    <table class="table table-sm mb-0 kv-table"><tbody>{% for k2,v2 in val.items() %}<tr><td>{{ k2|e }}</td><td>{% if v2 is mapping or (v2 is iterable and v2 is not string) %}{{ v2 | tojson }}{% else %}{{ v2|e }}{% endif %}</td></tr>{% endfor %}</tbody></table>
+                {% elif val is iterable and val is not string %}
+                    {% if val | length > 0 and val[0] is mapping %}
+                        {# List of dicts - render as table #}
+                        {% set dict_keys = val[0].keys() | list %}
+                        <div class="table-responsive"><table class="table table-sm table-bordered mb-0" style="font-size:0.82rem;">
+                            <thead><tr>{% for dk in dict_keys %}<th>{{ dk | replace('_',' ') | title | e }}</th>{% endfor %}</tr></thead>
+                            <tbody>{% for item in val %}<tr>{% for dk in dict_keys %}<td>{{ item[dk] | default('') | e }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+                        </table></div>
+                    {% else %}
+                        <ul class="mb-0 ps-3">{% for item in val %}<li style="color:var(--text-primary);font-size:0.85rem;">{{ item | e }}</li>{% endfor %}</ul>
+                    {% endif %}
+                {% else %}<span style="color:var(--text-primary);">{{ val | e }}</span>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ EMAIL FORENSICS ═══════════════════════════════════════════ -->
+{% if forensics and forensics | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#forensicsCollapse" aria-expanded="true">
+        <h5 class="mb-0"><i class="bi bi-binoculars me-2"></i>Email Forensics</h5>
+        <i class="bi bi-chevron-up collapse-chevron"></i>
+    </div>
+    <div class="collapse show" id="forensicsCollapse">
+        <div class="card-body">
+            {% for key, val in forensics.items() %}
+            {% if key != 'authentication' %}
+            <div class="detail-section">
+                <h6 style="color:var(--text-secondary);">{{ key | replace('_',' ') | title | e }}</h6>
+                {% if val is mapping %}
+                    <table class="table table-sm mb-0 kv-table"><tbody>{% for k2,v2 in val.items() %}<tr><td>{{ k2|e }}</td><td>{% if v2 is mapping or (v2 is iterable and v2 is not string) %}{{ v2 | tojson }}{% else %}{{ v2|e }}{% endif %}</td></tr>{% endfor %}</tbody></table>
+                {% elif val is iterable and val is not string %}
+                    {% if val | length > 0 and val[0] is mapping %}
+                        {% set dict_keys = val[0].keys() | list %}
+                        <div class="table-responsive"><table class="table table-sm table-bordered mb-0" style="font-size:0.82rem;">
+                            <thead><tr>{% for dk in dict_keys %}<th>{{ dk | replace('_',' ') | title | e }}</th>{% endfor %}</tr></thead>
+                            <tbody>{% for item in val %}<tr>{% for dk in dict_keys %}<td>{% if item[dk] is mapping or (item[dk] is iterable and item[dk] is not string) %}{{ item[dk] | tojson }}{% else %}{{ item[dk] | default('') | e }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
+                        </table></div>
+                    {% else %}
+                        <ul class="mb-0 ps-3">{% for item in val %}<li style="color:var(--text-primary);font-size:0.85rem;">{{ item | e }}</li>{% endfor %}</ul>
+                    {% endif %}
+                {% else %}<span style="color:var(--text-primary);">{{ val | e }}</span>{% endif %}
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ LLM ANALYSIS — FIX: llm_analysis is a DICT {verdict, analysis, recommendations} ══ -->
+{% if llm_analysis %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-robot me-2"></i>AI Analysis</h5>
+    </div>
+    <div class="card-body">
+        {% if llm_analysis is mapping %}
+            {# Show AI verdict badge #}
+            {% if llm_analysis.verdict %}
+            {% set lv = llm_analysis.verdict | string | lower %}
+            <div class="mb-3 d-flex align-items-center gap-2">
+                <span style="color:var(--text-secondary);font-size:0.85rem;">AI Verdict:</span>
+                {% if lv == 'malicious' %}<span class="verdict-badge verdict-malicious">Malicious</span>
+                {% elif lv == 'suspicious' %}<span class="verdict-badge verdict-suspicious">Suspicious</span>
+                {% elif lv == 'clean' %}<span class="verdict-badge verdict-clean">Clean</span>
+                {% else %}<span class="verdict-badge verdict-unknown">{{ llm_analysis.verdict | e | title }}</span>
+                {% endif %}
+            </div>
+            {% endif %}
+            {# Main analysis text #}
+            {% if llm_analysis.analysis %}
+            <div class="p-3 rounded mb-3" style="background-color:var(--bg-tertiary);border:1px solid var(--border-color);">
+                <p class="llm-analysis-text mb-0">{{ llm_analysis.analysis | e }}</p>
+            </div>
+            {% endif %}
+            {# AI recommendations list #}
+            {% if llm_analysis.recommendations %}
+            <div class="mb-2">
+                <h6 style="color:var(--text-secondary);"><i class="bi bi-lightbulb me-1"></i>AI Recommendations</h6>
+                <ol class="mb-0">
+                    {% for rec in llm_analysis.recommendations %}
+                    <li style="color:var(--text-primary);margin-bottom:0.4rem;font-size:0.9rem;">{{ rec | e }}</li>
+                    {% endfor %}
+                </ol>
+            </div>
+            {% endif %}
+            {# Any extra keys not already handled #}
+            {% for key, val in llm_analysis.items() %}
+                {% if key not in ['verdict','analysis','recommendations'] %}
+                <div class="mt-3">
+                    <h6 style="color:var(--text-secondary);">{{ key | replace('_',' ') | title | e }}</h6>
+                    <p style="color:var(--text-primary);white-space:pre-wrap;font-size:0.9rem;margin-bottom:0;">{{ val | e }}</p>
+                </div>
+                {% endif %}
+            {% endfor %}
+        {% else %}
+            {# Fallback: render as plain string if somehow not a dict #}
+            <div class="p-3 rounded" style="background-color:var(--bg-tertiary);border:1px solid var(--border-color);">
+                <p class="llm-analysis-text mb-0">{{ llm_analysis | e }}</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ DETECTION RULES — FIX: detection_rules is a DICT {"kql":"...","spl":"...",...} ══ -->
+{% if detection_rules and detection_rules | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#rulesCollapse" aria-expanded="true">
+        <h5 class="mb-0"><i class="bi bi-code-square me-2"></i>Detection Rules</h5>
+        <i class="bi bi-chevron-up collapse-chevron"></i>
+    </div>
+    <div class="collapse show" id="rulesCollapse">
+        <div class="card-body">
+            {% if detection_rules is mapping %}
+                {# Build tabs dynamically from dict keys — FIX: iterate items() not list #}
+                {% set rule_items = detection_rules.items() | list %}
+                <ul class="nav nav-tabs mb-0" id="ruleTabs" role="tablist">
+                    {% for rule_type, rule_content in rule_items %}
+                    {% if rule_content %}
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link {% if loop.first %}active{% endif %}"
+                                id="tab-{{ loop.index }}" data-bs-toggle="tab"
+                                data-bs-target="#tabpane-{{ loop.index }}" type="button" role="tab">
+                            {{ rule_type | upper | e }}
+                        </button>
+                    </li>
+                    {% endif %}
+                    {% endfor %}
+                </ul>
+                <div class="tab-content rule-tab-content" id="ruleTabContent">
+                    {% for rule_type, rule_content in rule_items %}
+                    {% if rule_content %}
+                    <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
+                         id="tabpane-{{ loop.index }}" role="tabpanel">
+                        <div class="rule-wrapper">
+                            <button class="btn btn-sm btn-outline-secondary copy-btn no-print"
+                                    data-rule-id="rulecode-{{ loop.index }}"
+                                    title="Copy {{ rule_type | upper | e }} rule">
+                                <i class="bi bi-clipboard me-1"></i>Copy
+                            </button>
+                            <pre id="rulecode-{{ loop.index }}"><code>{{ rule_content | e }}</code></pre>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            {% else %}
+                {# Fallback: list of {type, rule} objects #}
+                {% for rule in detection_rules %}
+                <div class="detail-section">
+                    {% if rule is mapping %}
+                        <h6>{{ rule.type | default('Rule') | e }}</h6>
+                        <div class="rule-wrapper"><pre><code>{{ rule.rule | default(rule.content | default('')) | e }}</code></pre></div>
+                    {% else %}
+                        <div class="rule-wrapper"><pre><code>{{ rule | e }}</code></pre></div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ RECOMMENDATIONS ════════════════════════════════════════════ -->
+{% if recommendations and recommendations | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-lightbulb me-2"></i>Recommendations</h5>
+    </div>
+    <div class="card-body">
+        <ol class="mb-0">
+            {% for rec in recommendations %}
+            <li style="color:var(--text-primary);margin-bottom:0.5rem;font-size:0.9rem;">{{ rec | e }}</li>
+            {% endfor %}
+        </ol>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ SCORING BREAKDOWN ══════════════════════════════════════════ -->
+{% if scoring and scoring | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#scoringCollapse" aria-expanded="true">
+        <h5 class="mb-0"><i class="bi bi-bar-chart me-2"></i>Scoring Breakdown</h5>
+        <i class="bi bi-chevron-up collapse-chevron"></i>
+    </div>
+    <div class="collapse show" id="scoringCollapse">
+        <div class="card-body">
+            <div class="d-flex flex-wrap">
+                {% for key, val in scoring.items() %}
+                <div class="score-pill">
+                    <span style="color:var(--text-secondary);font-size:0.75rem;">{{ key | replace('_',' ') | title | e }}</span>
+                    <span class="pill-value" style="color:{% if val|int >= 70 %}#dc3545{% elif val|int >= 40 %}#ffc107{% else %}#28a745{% endif %};">{{ val | e }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ MITRE ATT&CK MAPPING ═══════════════════════════════════════ -->
+{% if mitre_mapping and mitre_mapping | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#mitreCollapse" aria-expanded="true">
+        <h5 class="mb-0"><i class="bi bi-diagram-3 me-2"></i>MITRE ATT&amp;CK Mapping</h5>
+        <i class="bi bi-chevron-up collapse-chevron"></i>
+    </div>
+    <div class="collapse show" id="mitreCollapse">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover mb-0">
+                    <thead>
+                        <tr style="background-color:var(--bg-tertiary);">
+                            <th>Tactic</th><th>Technique</th><th>ID</th><th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if mitre_mapping is mapping %}
+                            {% for tactic, techniques in mitre_mapping.items() %}
+                                {% if techniques is iterable and techniques is not string %}
+                                    {% for tech in techniques %}
+                                    <tr>
+                                        <td style="color:var(--text-secondary);">{{ tactic | e }}</td>
+                                        <td>{{ tech.technique | default(tech.name | default('')) | e }}</td>
+                                        <td><span class="mitre-badge">{{ tech.id | default('') | e }}</span></td>
+                                        <td style="font-size:0.8rem;color:var(--text-secondary);">{{ tech.description | default('') | e }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr><td>{{ tactic | e }}</td><td colspan="3">{{ techniques | e }}</td></tr>
+                                {% endif %}
+                            {% endfor %}
+                        {% else %}
+                            {% for item in mitre_mapping %}
+                            <tr>
+                                <td style="color:var(--text-secondary);">{{ item.tactic | default('') | e }}</td>
+                                <td>{{ item.technique | default(item.name | default('')) | e }}</td>
+                                <td><span class="mitre-badge">{{ item.id | default('') | e }}</span></td>
+                                <td style="font-size:0.8rem;color:var(--text-secondary);">{{ item.description | default('') | e }}</td>
+                            </tr>
+                            {% endfor %}
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ STRING ANALYSIS (collapsible, closed by default) ══════════ -->
+{% if string_analysis and string_analysis | length > 0 %}
+<div class="card mb-4">
+    <div class="card-header card-header-collapsible d-flex justify-content-between align-items-center"
+         data-bs-toggle="collapse" data-bs-target="#stringsCollapse" aria-expanded="false">
+        <h5 class="mb-0"><i class="bi bi-fonts me-2"></i>String Analysis</h5>
+        <i class="bi bi-chevron-down collapse-chevron"></i>
+    </div>
+    <div class="collapse" id="stringsCollapse">
+        <div class="card-body">
+            {% if string_analysis is mapping %}
+                {% for key, val in string_analysis.items() %}
+                <div class="detail-section">
+                    <h6 style="color:var(--text-secondary);">{{ key | replace('_',' ') | title | e }}</h6>
+                    {% if val is iterable and val is not string %}
+                        <div style="max-height:200px;overflow-y:auto;">
+                        {% for s in val %}<code style="display:block;font-size:0.78rem;color:var(--text-primary);padding:1px 0;">{{ s | e }}</code>{% endfor %}
+                        </div>
+                    {% else %}<span style="color:var(--text-primary);">{{ val | e }}</span>{% endif %}
+                </div>
+                {% endfor %}
+            {% else %}
+                <div style="max-height:300px;overflow-y:auto;font-family:monospace;font-size:0.8rem;">
+                    {% for s in string_analysis %}<div style="color:var(--text-primary);padding:1px 0;">{{ s | e }}</div>{% endfor %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- ══ RAW JSON VIEWER (collapsible, closed by default) ══════════ -->
+{% if result %}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-braces me-2"></i>Raw JSON Data</h5>
+        <button class="btn btn-sm btn-outline-secondary no-print" type="button"
+                data-bs-toggle="collapse" data-bs-target="#rawDataCollapse"
+                aria-expanded="false" aria-controls="rawDataCollapse">
+            <i class="bi bi-chevron-expand me-1"></i>Toggle
+        </button>
+    </div>
+    <div class="collapse" id="rawDataCollapse">
+        <div class="card-body">
+            <pre class="p-3 rounded mb-0" id="rawJsonPre"
+                 style="background-color:var(--bg-tertiary);border:1px solid var(--border-color);
+                        max-height:500px;overflow:auto;font-size:0.78rem;"></pre>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    'use strict';
+
+    /* ── Score gauge (Chart.js doughnut, semi-circle) ─────────── */
+    var score = {{ threat_score | int }};
+    var gaugeCanvas = document.getElementById('scoreGauge');
+    if (gaugeCanvas && typeof Chart !== 'undefined') {
+        var gaugeColor = score >= 70 ? '#dc3545' : score >= 40 ? '#ffc107' : '#28a745';
+        var bgColor = getComputedStyle(document.documentElement)
+                        .getPropertyValue('--bg-tertiary').trim() || '#2d323e';
+        new Chart(gaugeCanvas, {
+            type: 'doughnut',
+            data: {
+                datasets: [{
+                    data: [score, 100 - score],
+                    backgroundColor: [gaugeColor, bgColor],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: true,
+                cutout: '75%', rotation: -90, circumference: 180,
+                plugins: { legend: { display: false }, tooltip: { enabled: false } }
+            }
+        });
+    }
+
+    /* ── Chevron sync for collapsible card headers ────────────── */
+    document.querySelectorAll('[data-bs-toggle="collapse"]').forEach(function (el) {
+        var targetId = el.getAttribute('data-bs-target');
+        if (!targetId) return;
+        var target = document.querySelector(targetId);
+        if (!target) return;
+        var chevron = el.querySelector('.collapse-chevron');
+        if (!chevron) return;
+        target.addEventListener('show.bs.collapse', function () {
+            chevron.classList.remove('bi-chevron-down');
+            chevron.classList.add('bi-chevron-up');
+        });
+        target.addEventListener('hide.bs.collapse', function () {
+            chevron.classList.remove('bi-chevron-up');
+            chevron.classList.add('bi-chevron-down');
+        });
+    });
+
+    /* ── Hash copy buttons via data-copy attribute ────────────── */
+    document.querySelectorAll('button[data-copy]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            copyTextToClipboard(btn.getAttribute('data-copy'), btn, false);
+        });
+    });
+
+    /* ── Detection rule copy buttons via data-rule-id attribute ─ */
+    document.querySelectorAll('button[data-rule-id]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var el = document.getElementById(btn.getAttribute('data-rule-id'));
+            if (!el) return;
+            copyTextToClipboard(el.textContent || '', btn, true);
+        });
+    });
+
+    /* ── Raw JSON viewer — safe textContent only, no innerHTML ── */
+    var rawJsonPre = document.getElementById('rawJsonPre');
+    if (rawJsonPre) {
+        var resultData = {{ (job.result | default({})) | tojson }};
+        var codeEl = document.createElement('code');
+        codeEl.textContent = JSON.stringify(resultData, null, 2);
+        rawJsonPre.appendChild(codeEl);
+    }
+
+    /* ── Export JSON ─────────────────────────────────────────── */
+    var exportBtn = document.getElementById('btnExportReportJson');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', function () {
+            var exportData = {{ (job.result | default({})) | tojson }};
+            exportData._meta = {
+                id:            {{ job.id            | default('') | tojson }},
+                analysis_type: {{ job.analysis_type | default('') | tojson }},
+                status:        {{ job.status        | default('') | tojson }},
+                created_at:    {{ job.created_at    | default('') | tojson }},
+                completed_at:  {{ (job.completed_at | default('')) | tojson }}
+            };
+            var blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'report-' + {{ job.id | default('unknown') | tojson }} + '.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+    }
+
+    /* ── Shared clipboard helper (no innerHTML anywhere) ──────── */
+    function copyTextToClipboard(text, btn, isRuleBtn) {
+        function onSuccess() {
+            if (!btn) return;
+            var icon = btn.querySelector('i');
+            if (isRuleBtn) {
+                /* Rebuild button children with safe DOM methods only */
+                while (btn.firstChild) { btn.removeChild(btn.firstChild); }
+                var ci = document.createElement('i');
+                ci.className = 'bi bi-check-lg me-1';
+                btn.appendChild(ci);
+                btn.appendChild(document.createTextNode('Copied!'));
+                setTimeout(function () {
+                    while (btn.firstChild) { btn.removeChild(btn.firstChild); }
+                    var ri = document.createElement('i');
+                    ri.className = 'bi bi-clipboard me-1';
+                    btn.appendChild(ri);
+                    btn.appendChild(document.createTextNode('Copy'));
+                }, 1500);
+            } else if (icon) {
+                var origClass = icon.className;
+                icon.className = 'bi bi-check-lg';
+                setTimeout(function () { icon.className = origClass; }, 1500);
+            }
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(onSuccess).catch(function () {
+                fallbackCopy(text, onSuccess);
+            });
+        } else {
+            fallbackCopy(text, onSuccess);
+        }
+    }
+
+    function fallbackCopy(text, cb) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try { document.execCommand('copy'); if (cb) cb(); } catch (e) { /* silent */ }
+        document.body.removeChild(ta);
+    }
+
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,553 @@
+{# Author: Ugur Ates #}
+{# Base template - Modern SOC Dashboard for Blue Team Assistant #}
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}CABTA - Cyan Agent Blue Team Assistant{% endblock %}</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/static/img/logo.svg">
+    <link rel="apple-touch-icon" href="/static/img/logo.svg">
+
+    <!-- Bootstrap 5 CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <!-- Application styles -->
+    <link href="/static/css/themes.css?v=5" rel="stylesheet">
+    <link href="/static/css/dashboard.css?v=5" rel="stylesheet">
+
+    <style>
+        /* ── Top Navbar ─────────────────────────────────────────── */
+        .argus-navbar {
+            height: 56px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0 1rem;
+            z-index: 1040;
+        }
+
+        .argus-navbar .navbar-brand {
+            font-weight: 700;
+            font-size: 1.1rem;
+            letter-spacing: 0.02em;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .argus-navbar .navbar-brand .brand-logo {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            object-fit: contain;
+            filter: drop-shadow(0 0 6px rgba(0, 212, 255, 0.4));
+            transition: filter 0.3s ease;
+        }
+
+        .argus-navbar .navbar-brand:hover .brand-logo {
+            filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.7));
+        }
+
+        .argus-navbar .navbar-brand .brand-label {
+            color: var(--text-primary);
+        }
+
+        .argus-navbar .navbar-brand .brand-label small {
+            display: block;
+            font-size: 0.6rem;
+            font-weight: 400;
+            color: var(--text-muted);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            line-height: 1;
+            margin-top: 1px;
+        }
+
+        /* Nav link pills */
+        .argus-navbar .nav-link {
+            color: var(--text-secondary);
+            font-size: 0.82rem;
+            font-weight: 500;
+            padding: 0.35rem 0.7rem;
+            border-radius: 6px;
+            transition: color 0.15s, background 0.15s;
+            white-space: nowrap;
+        }
+
+        .argus-navbar .nav-link:hover,
+        .argus-navbar .nav-link:focus {
+            color: var(--text-primary);
+            background: var(--bg-hover, rgba(255,255,255,0.06));
+        }
+
+        .argus-navbar .nav-link.active,
+        .argus-navbar .nav-link.active-section {
+            color: var(--accent, #3b82f6);
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .argus-navbar .nav-link i {
+            font-size: 0.92rem;
+        }
+
+        /* Dropdown menus */
+        .argus-navbar .dropdown-menu {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.35rem;
+            min-width: 200px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+        }
+
+        .argus-navbar .dropdown-item {
+            color: var(--text-secondary);
+            font-size: 0.82rem;
+            padding: 0.45rem 0.75rem;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .argus-navbar .dropdown-item:hover,
+        .argus-navbar .dropdown-item:focus {
+            color: var(--text-primary);
+            background: var(--bg-hover, rgba(255,255,255,0.06));
+        }
+
+        .argus-navbar .dropdown-item.active {
+            color: var(--accent, #3b82f6);
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        .argus-navbar .dropdown-item i {
+            width: 18px;
+            text-align: center;
+            font-size: 0.88rem;
+            opacity: 0.7;
+        }
+
+        /* Right-side controls */
+        .navbar-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .navbar-controls .btn-nav-icon {
+            width: 34px;
+            height: 34px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            font-size: 1rem;
+            transition: color 0.15s, background 0.15s;
+            text-decoration: none;
+            padding: 0;
+        }
+
+        .navbar-controls .btn-nav-icon:hover {
+            color: var(--text-primary);
+            background: var(--bg-hover, rgba(255,255,255,0.06));
+        }
+
+        /* System status dot */
+        .system-status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #22c55e;
+            display: inline-block;
+            animation: pulse-green 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-green {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.5); }
+            50% { box-shadow: 0 0 0 4px rgba(34,197,94,0); }
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 500;
+            color: #22c55e;
+            padding: 0.25rem 0.6rem;
+            border-radius: 20px;
+            background: rgba(34,197,94,0.08);
+            border: 1px solid rgba(34,197,94,0.15);
+        }
+
+        /* ── Sub-header / Status Bar ───────────────────────────── */
+        .sub-header {
+            height: 36px;
+            min-height: 36px;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 1rem;
+            gap: 1rem;
+        }
+
+        .sub-header .page-title-area {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            min-width: 0;
+        }
+
+        .sub-header .page-title-area h6 {
+            margin: 0;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            white-space: nowrap;
+        }
+
+        .sub-header .page-title-area .page-subtitle {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .sub-header .header-actions-area {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-shrink: 0;
+        }
+
+        /* ── Main Content (no sidebar offset) ──────────────────── */
+        .main-content {
+            margin-left: 0 !important;
+            padding-top: 0 !important;
+        }
+
+        .page-content {
+            padding: 1.25rem;
+        }
+
+        /* ── Navbar toggler override ───────────────────────────── */
+        .argus-navbar .navbar-toggler {
+            border: none;
+            padding: 0.25rem 0.4rem;
+            color: var(--text-secondary);
+            font-size: 1.25rem;
+        }
+
+        .argus-navbar .navbar-toggler:focus {
+            box-shadow: none;
+        }
+
+        /* Offcanvas on mobile */
+        @media (max-width: 991.98px) {
+            .argus-offcanvas {
+                background: var(--bg-secondary) !important;
+                border-right: 1px solid var(--border-color) !important;
+                max-width: 280px;
+            }
+
+            .argus-offcanvas .offcanvas-header {
+                border-bottom: 1px solid var(--border-color);
+                padding: 0.75rem 1rem;
+            }
+
+            .argus-offcanvas .offcanvas-body .nav-link {
+                padding: 0.5rem 0.75rem;
+                border-radius: 6px;
+                margin-bottom: 1px;
+            }
+
+            .argus-offcanvas .dropdown-menu {
+                box-shadow: none;
+                border: none;
+                padding-left: 0.5rem;
+                background: transparent;
+            }
+
+            .argus-offcanvas .nav-section-label {
+                font-size: 0.65rem;
+                font-weight: 700;
+                letter-spacing: 0.1em;
+                text-transform: uppercase;
+                color: var(--text-muted);
+                padding: 0.75rem 0.75rem 0.25rem;
+            }
+        }
+
+        /* ── Divider dot between nav groups (desktop) ──────────── */
+        @media (min-width: 992px) {
+            .nav-divider {
+                width: 3px;
+                height: 3px;
+                border-radius: 50%;
+                background: var(--text-muted);
+                opacity: 0.4;
+                margin: 0 0.15rem;
+                flex-shrink: 0;
+            }
+        }
+
+        @media (max-width: 991.98px) {
+            .nav-divider { display: none; }
+        }
+    </style>
+
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+
+    <!-- ═══ Top Navbar ═══════════════════════════════════════════ -->
+    <nav class="navbar navbar-expand-lg argus-navbar fixed-top">
+        <div class="container-fluid px-2 px-lg-3">
+
+            <!-- Brand -->
+            <a class="navbar-brand me-3" href="/">
+                <img src="/static/img/logo.svg" alt="CABTA" class="brand-logo">
+                <span class="brand-label">
+                    CABTA
+                    <small>Cyan Agent Blue Team Assistant</small>
+                </span>
+            </a>
+
+            <!-- Mobile toggler -->
+            <button class="navbar-toggler" type="button"
+                    data-bs-toggle="offcanvas" data-bs-target="#navOffcanvas"
+                    aria-controls="navOffcanvas" aria-label="Toggle navigation">
+                <i class="bi bi-list"></i>
+            </button>
+
+            <!-- Nav body (offcanvas on mobile, inline on desktop) -->
+            <div class="offcanvas offcanvas-start argus-offcanvas d-lg-flex"
+                 tabindex="-1" id="navOffcanvas">
+
+                <!-- Offcanvas header (mobile only) -->
+                <div class="offcanvas-header d-lg-none">
+                    <a class="navbar-brand" href="/">
+                        <img src="/static/img/logo.svg" alt="CABTA" class="brand-logo">
+                        <span class="brand-label">CABTA</span>
+                    </a>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+                </div>
+
+                <div class="offcanvas-body d-lg-flex align-items-center gap-1">
+
+                    <!-- Agent Chat (home) -->
+                    <a href="/" class="nav-link {% if request.url.path == '/' or request.url.path == '/agent/chat' %}active{% endif %}">
+                        <i class="bi bi-chat-dots me-1"></i>Agent Chat
+                    </a>
+
+                    <span class="nav-divider"></span>
+
+                    <!-- Dashboard -->
+                    <a href="/dashboard" class="nav-link {% if request.url.path == '/dashboard' %}active{% endif %}">
+                        <i class="bi bi-grid-1x2-fill me-1"></i>Dashboard
+                    </a>
+
+                    <span class="nav-divider"></span>
+
+                    <!-- Agent dropdown -->
+                    <div class="d-lg-none nav-section-label">AGENT</div>
+                    <div class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle {% if request.url.path.startswith('/agent') and request.url.path != '/agent/chat' %}active-section{% endif %}"
+                           href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-robot me-1"></i>Agent
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li>
+                                <a class="dropdown-item {% if request.url.path == '/agent/investigations' %}active{% endif %}" href="/agent/investigations">
+                                    <i class="bi bi-binoculars"></i> Investigations
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item {% if request.url.path == '/agent/playbooks' %}active{% endif %}" href="/agent/playbooks">
+                                    <i class="bi bi-journal-code"></i> Playbooks
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <span class="nav-divider"></span>
+
+                    <!-- Analysis dropdown -->
+                    <div class="d-lg-none nav-section-label">ANALYSIS</div>
+                    <div class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle {% if request.url.path.startswith('/analysis') %}active-section{% endif %}"
+                           href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-search me-1"></i>Analysis
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li>
+                                <a class="dropdown-item {% if request.url.path == '/analysis/ioc' %}active{% endif %}" href="/analysis/ioc">
+                                    <i class="bi bi-search"></i> IOC Investigation
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item {% if request.url.path == '/analysis/file' %}active{% endif %}" href="/analysis/file">
+                                    <i class="bi bi-file-earmark-binary"></i> Malware Analysis
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item {% if request.url.path == '/analysis/email' %}active{% endif %}" href="/analysis/email">
+                                    <i class="bi bi-envelope-exclamation"></i> Email Forensics
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <span class="nav-divider"></span>
+
+                    <!-- Management dropdown -->
+                    <div class="d-lg-none nav-section-label">MANAGEMENT</div>
+                    <div class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle {% if request.url.path in ['/history', '/cases'] or request.url.path.startswith('/cases') %}active-section{% endif %}"
+                           href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-folder2-open me-1"></i>Management
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li>
+                                <a class="dropdown-item {% if request.url.path == '/history' %}active{% endif %}" href="/history">
+                                    <i class="bi bi-clock-history"></i> Analysis History
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item {% if request.url.path.startswith('/cases') %}active{% endif %}" href="/cases">
+                                    <i class="bi bi-folder2-open"></i> Case Management
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <span class="nav-divider"></span>
+
+                    <!-- System dropdown -->
+                    <div class="d-lg-none nav-section-label">SYSTEM</div>
+                    <div class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle {% if request.url.path in ['/mcp/servers', '/settings'] %}active-section{% endif %}"
+                           href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="bi bi-gear me-1"></i>System
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li>
+                                <a class="dropdown-item {% if request.url.path == '/mcp/servers' %}active{% endif %}" href="/mcp/servers">
+                                    <i class="bi bi-hdd-network"></i> MCP Servers
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item {% if request.url.path == '/settings' %}active{% endif %}" href="/settings">
+                                    <i class="bi bi-sliders"></i> Settings
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- Right controls (always visible) -->
+            <div class="navbar-controls ms-auto ms-lg-2">
+                <!-- API Docs -->
+                <a href="/api/docs" target="_blank" class="btn-nav-icon" title="API Documentation">
+                    <i class="bi bi-braces"></i>
+                </a>
+                <!-- Health Check -->
+                <a href="/api/config/health" target="_blank" class="btn-nav-icon" title="Health Check">
+                    <i class="bi bi-heart-pulse"></i>
+                </a>
+                <!-- Theme toggle -->
+                <button class="btn-nav-icon" onclick="MCPTheme.toggle()" title="Toggle theme (Ctrl+Shift+T)">
+                    <i class="bi bi-moon-stars-fill" id="themeIcon"></i>
+                </button>
+                <!-- System status -->
+                <span class="status-badge ms-1">
+                    <span class="system-status-dot"></span>
+                    <span class="d-none d-md-inline">Online</span>
+                </span>
+            </div>
+
+        </div>
+    </nav>
+
+    <!-- ═══ Sub-header / Page Title Bar ═════════════════════════ -->
+    <div class="sub-header" style="margin-top: 56px;">
+        <div class="page-title-area">
+            <h6>{% block page_title %}Dashboard{% endblock %}</h6>
+            {% block page_subtitle %}<span class="page-subtitle"></span>{% endblock %}
+        </div>
+        <div class="header-actions-area">
+            {% block header_actions %}{% endblock %}
+        </div>
+    </div>
+
+    <!-- ═══ Main Content ════════════════════════════════════════ -->
+    <div id="main-content" class="main-content">
+        <main class="page-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Bootstrap 5 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Application scripts -->
+    <script src="/static/js/theme.js?v=5"></script>
+    <script src="/static/js/websocket.js?v=5"></script>
+    <script src="/static/js/charts.js?v=5"></script>
+    <script src="/static/js/dashboard.js?v=5"></script>
+    <script src="/static/js/analysis.js?v=5"></script>
+
+    <script>
+        // Theme icon sync
+        (function () {
+            function syncIcons() {
+                var theme = document.documentElement.getAttribute('data-theme') || 'dark';
+                var icon = document.getElementById('themeIcon');
+                if (icon) {
+                    icon.className = theme === 'dark' ? 'bi bi-sun-fill' : 'bi bi-moon-stars-fill';
+                }
+            }
+            syncIcons();
+            new MutationObserver(syncIcons).observe(document.documentElement, {
+                attributes: true,
+                attributeFilter: ['data-theme']
+            });
+        })();
+
+        // Close offcanvas on nav click (mobile)
+        (function () {
+            var offcanvasEl = document.getElementById('navOffcanvas');
+            if (!offcanvasEl) return;
+            offcanvasEl.querySelectorAll('a.nav-link, a.dropdown-item').forEach(function (link) {
+                link.addEventListener('click', function () {
+                    var bsOffcanvas = bootstrap.Offcanvas.getInstance(offcanvasEl);
+                    if (bsOffcanvas) bsOffcanvas.hide();
+                });
+            });
+        })();
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

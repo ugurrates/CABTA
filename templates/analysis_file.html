@@ -1,0 +1,1576 @@
+{# Author: Ugur Ates #}
+{# File Analysis - drag-and-drop upload with tabbed results #}
+{% extends "base.html" %}
+
+{% block title %}File Analysis - Blue Team Assistant{% endblock %}
+{% block page_title %}Malware Analysis{% endblock %}
+{% block page_subtitle %}<span class="page-subtitle">Upload suspicious files for static analysis, YARA matching, and threat scoring</span>{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* ===== Drop Zone ===== */
+    .drop-zone-enhanced {
+        border: 2px dashed var(--bs-secondary-color, #6c757d);
+        border-radius: 12px;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        background: rgba(var(--bs-body-color-rgb, 255,255,255), 0.02);
+    }
+    .drop-zone-enhanced:hover,
+    .drop-zone-enhanced.drag-over {
+        border-color: var(--bs-primary, #0d6efd);
+        background: rgba(var(--bs-primary-rgb, 13,110,253), 0.06);
+        animation: dropPulse 1.5s ease-in-out infinite;
+    }
+    @keyframes dropPulse {
+        0%, 100% { border-color: var(--bs-primary, #0d6efd); box-shadow: 0 0 0 0 rgba(var(--bs-primary-rgb, 13,110,253), 0.15); }
+        50% { border-color: var(--bs-info, #0dcaf0); box-shadow: 0 0 20px 4px rgba(var(--bs-primary-rgb, 13,110,253), 0.10); }
+    }
+    .drop-zone-enhanced .drop-icon {
+        font-size: 3.5rem;
+        color: var(--bs-secondary-color, #6c757d);
+        transition: color 0.3s, transform 0.3s;
+    }
+    .drop-zone-enhanced:hover .drop-icon,
+    .drop-zone-enhanced.drag-over .drop-icon {
+        color: var(--bs-primary, #0d6efd);
+        transform: translateY(-4px);
+    }
+    .file-type-icons {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        opacity: 0.45;
+        font-size: 1.1rem;
+    }
+    .file-type-icons span { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 0.65rem; }
+    .file-type-icons i { font-size: 1.3rem; }
+
+    /* ===== File Info Card ===== */
+    .file-info-card {
+        background: rgba(var(--bs-primary-rgb, 13,110,253), 0.06);
+        border: 1px solid rgba(var(--bs-primary-rgb, 13,110,253), 0.18);
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+    }
+    .file-type-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 10px;
+        border-radius: 6px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .file-type-badge.badge-pe { background: rgba(220,53,69,0.15); color: #dc3545; }
+    .file-type-badge.badge-elf { background: rgba(253,126,20,0.15); color: #fd7e14; }
+    .file-type-badge.badge-pdf { background: rgba(220,53,69,0.15); color: #e74c3c; }
+    .file-type-badge.badge-doc { background: rgba(13,110,253,0.15); color: #0d6efd; }
+    .file-type-badge.badge-script { background: rgba(25,135,84,0.15); color: #198754; }
+    .file-type-badge.badge-archive { background: rgba(111,66,193,0.15); color: #6f42c1; }
+    .file-type-badge.badge-generic { background: rgba(108,117,125,0.15); color: #6c757d; }
+
+    .hash-preview {
+        font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+        font-size: 0.75rem;
+        color: var(--bs-secondary-color, #adb5bd);
+        word-break: break-all;
+        background: rgba(0,0,0,0.2);
+        padding: 6px 10px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .hash-preview code { flex: 1; color: var(--bs-info, #0dcaf0); }
+    .btn-copy-hash {
+        background: none;
+        border: 1px solid rgba(var(--bs-body-color-rgb, 255,255,255), 0.15);
+        color: var(--bs-secondary-color, #adb5bd);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: all 0.2s;
+    }
+    .btn-copy-hash:hover { background: rgba(var(--bs-primary-rgb, 13,110,253), 0.15); color: var(--bs-primary, #0d6efd); }
+    .btn-copy-hash.copied { color: var(--bs-success, #198754); border-color: var(--bs-success, #198754); }
+
+    /* ===== Engines Panel ===== */
+    .engine-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid rgba(var(--bs-body-color-rgb, 255,255,255), 0.06);
+    }
+    .engine-item:last-child { border-bottom: none; }
+    .engine-label { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+    .engine-label .engine-cat {
+        font-size: 0.6rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        opacity: 0.5;
+        display: block;
+        line-height: 1;
+        margin-top: 1px;
+    }
+    .engine-status { font-size: 0.7rem; }
+
+    /* ===== Threat Gauge ===== */
+    .threat-gauge-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1.5rem 0;
+    }
+    .threat-gauge-svg { width: 180px; height: 110px; }
+    .threat-gauge-score {
+        font-size: 2.2rem;
+        font-weight: 800;
+        font-family: 'Cascadia Code', 'Fira Code', monospace;
+    }
+    .threat-gauge-verdict {
+        font-size: 1rem;
+        font-weight: 600;
+        margin-top: 4px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .threat-gauge-confidence {
+        font-size: 0.75rem;
+        opacity: 0.6;
+        margin-top: 2px;
+    }
+    .gauge-green { color: #198754; }
+    .gauge-orange { color: #fd7e14; }
+    .gauge-red { color: #dc3545; }
+
+    /* ===== Hash Display Card ===== */
+    .hash-card {
+        background: rgba(0,0,0,0.15);
+        border: 1px solid rgba(var(--bs-body-color-rgb, 255,255,255), 0.08);
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+    }
+    .hash-card .hash-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 0;
+        border-bottom: 1px solid rgba(var(--bs-body-color-rgb, 255,255,255), 0.05);
+    }
+    .hash-card .hash-row:last-child { border-bottom: none; }
+    .hash-card .hash-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        width: 50px;
+        flex-shrink: 0;
+        color: var(--bs-info, #0dcaf0);
+    }
+    .hash-card .hash-value {
+        flex: 1;
+        font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+        font-size: 0.75rem;
+        word-break: break-all;
+        color: var(--bs-secondary-color, #adb5bd);
+    }
+
+    /* ===== Tab Placeholders ===== */
+    .tab-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 3rem 1rem;
+        opacity: 0.4;
+        text-align: center;
+    }
+    .tab-placeholder i {
+        font-size: 3rem;
+        margin-bottom: 0.75rem;
+    }
+    .tab-placeholder .ph-title {
+        font-weight: 600;
+        font-size: 0.95rem;
+        margin-bottom: 0.25rem;
+    }
+    .tab-placeholder .ph-desc {
+        font-size: 0.8rem;
+        max-width: 320px;
+    }
+
+    /* ===== Recent Uploads ===== */
+    .recent-uploads-section {
+        margin-top: 1.5rem;
+    }
+    .recent-upload-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 14px;
+        border-bottom: 1px solid rgba(var(--bs-body-color-rgb, 255,255,255), 0.06);
+        font-size: 0.83rem;
+    }
+    .recent-upload-item:last-child { border-bottom: none; }
+    .recent-upload-item .ru-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        flex-shrink: 0;
+    }
+    .recent-upload-item .ru-details { flex: 1; min-width: 0; }
+    .recent-upload-item .ru-name {
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .recent-upload-item .ru-meta {
+        font-size: 0.72rem;
+        opacity: 0.55;
+    }
+    .ru-verdict {
+        font-size: 0.68rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+    }
+    .ru-verdict-clean { background: rgba(25,135,84,0.15); color: #198754; }
+    .ru-verdict-suspicious { background: rgba(253,126,20,0.15); color: #fd7e14; }
+    .ru-verdict-malicious { background: rgba(220,53,69,0.15); color: #dc3545; }
+    .ru-verdict-unknown { background: rgba(108,117,125,0.15); color: #6c757d; }
+
+    /* ===== Misc ===== */
+    .computing-hash {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.75rem;
+        color: var(--bs-secondary-color, #adb5bd);
+        opacity: 0.7;
+    }
+    .computing-hash .spinner-border { width: 12px; height: 12px; border-width: 2px; }
+
+    /* ===== PE Headers & Security ===== */
+    .pe-security-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: 10px;
+    }
+    .pe-sec-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        background: rgba(0,0,0,0.15);
+        font-size: 0.82rem;
+        font-weight: 600;
+    }
+    .pe-sec-item.enabled { color: #198754; }
+    .pe-sec-item.disabled { color: #dc3545; opacity: 0.7; }
+    .pe-header-table td, .pe-header-table th {
+        padding: 6px 12px;
+        font-size: 0.83rem;
+    }
+    .pe-header-table th {
+        font-weight: 600;
+        color: var(--bs-info, #0dcaf0);
+        width: 140px;
+        white-space: nowrap;
+    }
+
+    /* ===== Suspicious Imports ===== */
+    .suspicious-import {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 10px;
+        border-radius: 6px;
+        font-size: 0.78rem;
+        font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+        background: rgba(220,53,69,0.12);
+        color: #dc3545;
+        border: 1px solid rgba(220,53,69,0.25);
+        margin: 3px;
+    }
+
+    /* ===== Threat Indicators ===== */
+    .threat-indicator-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        background: rgba(220,53,69,0.06);
+        border-left: 3px solid #dc3545;
+        margin-bottom: 8px;
+        font-size: 0.85rem;
+    }
+    .threat-indicator-item .ti-icon {
+        color: #dc3545;
+        font-size: 1rem;
+        flex-shrink: 0;
+        margin-top: 2px;
+    }
+
+    /* ===== Scoring Breakdown ===== */
+    .score-bar-container {
+        margin-bottom: 10px;
+    }
+    .score-bar-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.82rem;
+        margin-bottom: 4px;
+    }
+    .score-bar-label .sbl-name { font-weight: 600; text-transform: capitalize; }
+    .score-bar-label .sbl-value { font-family: 'Cascadia Code', 'Fira Code', monospace; color: var(--bs-info, #0dcaf0); }
+    .score-bar-track {
+        height: 8px;
+        background: rgba(255,255,255,0.06);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    .score-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.6s ease;
+    }
+    .contributing-factor {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 0;
+        font-size: 0.82rem;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .contributing-factor:last-child { border-bottom: none; }
+
+    /* ===== Detection Rules ===== */
+    .detection-rule-block {
+        position: relative;
+        margin-bottom: 16px;
+    }
+    .detection-rule-block pre {
+        background: rgba(0,0,0,0.25);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 8px;
+        padding: 14px;
+        font-size: 0.8rem;
+        max-height: 400px;
+        overflow-y: auto;
+        color: var(--bs-secondary-color, #adb5bd);
+        white-space: pre-wrap;
+        word-break: break-word;
+        margin: 0;
+    }
+    .btn-copy-rule {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: rgba(0,0,0,0.4);
+        border: 1px solid rgba(255,255,255,0.15);
+        color: var(--bs-secondary-color, #adb5bd);
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.72rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        z-index: 2;
+    }
+    .btn-copy-rule:hover { background: rgba(var(--bs-primary-rgb,13,110,253),0.2); color: var(--bs-primary, #0d6efd); }
+    .btn-copy-rule.copied { color: #198754; border-color: #198754; }
+
+    /* ===== Sandbox & Dynamic Analysis ===== */
+    .sandbox-report-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.2s;
+        border: 1px solid;
+    }
+    .sandbox-report-btn:hover { transform: translateY(-1px); }
+    .sandbox-report-btn.vt-btn { background: rgba(13,110,253,0.1); border-color: rgba(13,110,253,0.3); color: #0d6efd; }
+    .sandbox-report-btn.vt-btn:hover { background: rgba(13,110,253,0.2); color: #0d6efd; }
+    .sandbox-report-btn.anyrun-btn { background: rgba(25,135,84,0.1); border-color: rgba(25,135,84,0.3); color: #198754; }
+    .sandbox-report-btn.anyrun-btn:hover { background: rgba(25,135,84,0.2); color: #198754; }
+    .mitre-technique-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        font-size: 0.83rem;
+    }
+    .mitre-technique-row:last-child { border-bottom: none; }
+    .mitre-technique-row .mt-id {
+        font-family: 'Cascadia Code', 'Fira Code', monospace;
+        font-size: 0.78rem;
+        color: var(--bs-info, #0dcaf0);
+        background: rgba(var(--bs-info-rgb,13,202,240),0.1);
+        padding: 2px 8px;
+        border-radius: 4px;
+        white-space: nowrap;
+    }
+    .process-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        font-size: 0.82rem;
+        font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+        background: rgba(0,0,0,0.15);
+        border-radius: 6px;
+        margin-bottom: 4px;
+        word-break: break-all;
+    }
+    .network-table td { font-size: 0.82rem; word-break: break-all; }
+    .network-table th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* ===== Pipeline Timeline ===== */
+    .pipeline-timeline {
+        position: relative;
+        padding-left: 24px;
+    }
+    .pipeline-timeline::before {
+        content: '';
+        position: absolute;
+        left: 9px;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: rgba(255,255,255,0.08);
+    }
+    .pipeline-step {
+        position: relative;
+        padding: 8px 0 8px 16px;
+        font-size: 0.83rem;
+    }
+    .pipeline-step::before {
+        content: '';
+        position: absolute;
+        left: -19px;
+        top: 14px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        border: 2px solid;
+    }
+    .pipeline-step.step-completed::before { background: #198754; border-color: #198754; }
+    .pipeline-step.step-failed::before { background: #dc3545; border-color: #dc3545; }
+    .pipeline-step.step-skipped::before { background: transparent; border-color: #6c757d; }
+    .pipeline-step .ps-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+    }
+    .pipeline-step .ps-meta {
+        font-size: 0.75rem;
+        color: var(--bs-secondary-color, #adb5bd);
+        margin-top: 2px;
+    }
+    .pipeline-step .ps-duration {
+        font-family: 'Cascadia Code', 'Fira Code', monospace;
+        font-size: 0.73rem;
+        color: var(--bs-info, #0dcaf0);
+    }
+
+    /* ===== Entropy Detail ===== */
+    .entropy-stat-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 10px;
+    }
+    .entropy-stat-card {
+        background: rgba(0,0,0,0.15);
+        border-radius: 8px;
+        padding: 10px 14px;
+        text-align: center;
+    }
+    .entropy-stat-card .es-value {
+        font-size: 1.2rem;
+        font-weight: 700;
+        font-family: 'Cascadia Code', 'Fira Code', monospace;
+    }
+    .entropy-stat-card .es-label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        opacity: 0.6;
+        margin-top: 2px;
+    }
+
+    /* ===== String Categories ===== */
+    .string-cat-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        border: 1px solid transparent;
+    }
+    .string-cat-badge:hover { transform: translateY(-1px); }
+    .string-cat-badge .scb-count {
+        background: rgba(255,255,255,0.15);
+        padding: 1px 6px;
+        border-radius: 10px;
+        font-size: 0.7rem;
+    }
+    .string-cat-badge.cat-crypto { background: rgba(253,126,20,0.15); color: #fd7e14; }
+    .string-cat-badge.cat-persistence { background: rgba(220,53,69,0.15); color: #dc3545; }
+    .string-cat-badge.cat-process { background: rgba(111,66,193,0.15); color: #6f42c1; }
+    .string-cat-badge.cat-network { background: rgba(13,110,253,0.15); color: #0d6efd; }
+    .string-cat-badge.cat-anti_analysis { background: rgba(220,53,69,0.15); color: #dc3545; }
+    .string-cat-badge.cat-injection { background: rgba(253,126,20,0.15); color: #fd7e14; }
+    .string-cat-badge.cat-default { background: rgba(108,117,125,0.15); color: #6c757d; }
+    .string-cat-expand {
+        display: none;
+        margin-top: 8px;
+        padding: 10px 14px;
+        background: rgba(0,0,0,0.15);
+        border-radius: 8px;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    .string-cat-expand.show { display: block; }
+    .string-cat-expand .sce-item {
+        font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+        font-size: 0.78rem;
+        padding: 3px 0;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        word-break: break-all;
+    }
+
+    /* ===== YARA Enhanced ===== */
+    .yara-match-card {
+        background: rgba(0,0,0,0.12);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px;
+        padding: 14px;
+        margin-bottom: 12px;
+    }
+    .yara-match-card .ymc-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+    .yara-match-card .ymc-rule {
+        font-weight: 700;
+        font-size: 0.95rem;
+    }
+    .yara-severity {
+        padding: 2px 10px;
+        border-radius: 6px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+    .yara-severity-critical { background: rgba(220,53,69,0.2); color: #dc3545; }
+    .yara-severity-high { background: rgba(253,126,20,0.2); color: #fd7e14; }
+    .yara-severity-medium { background: rgba(255,193,7,0.2); color: #ffc107; }
+    .yara-severity-low { background: rgba(25,135,84,0.2); color: #198754; }
+    .yara-severity-info { background: rgba(13,202,240,0.15); color: #0dcaf0; }
+    .yara-string-offset {
+        font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+        font-size: 0.76rem;
+        color: var(--bs-secondary-color, #adb5bd);
+    }
+    .yara-recommendation {
+        font-size: 0.82rem;
+        padding: 8px 12px;
+        background: rgba(var(--bs-warning-rgb,255,193,7),0.08);
+        border-left: 3px solid var(--bs-warning, #ffc107);
+        border-radius: 0 6px 6px 0;
+        margin-top: 8px;
+    }
+
+    /* ===== Sub-tabs ===== */
+    .sub-tabs .nav-link {
+        font-size: 0.8rem;
+        padding: 6px 14px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <!-- File Upload Area -->
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header d-flex align-items-center">
+                <i class="bi bi-file-earmark-arrow-up me-2 text-accent"></i>
+                <h5 class="mb-0">Upload File for Analysis</h5>
+            </div>
+            <div class="card-body">
+                <form id="fileForm" onsubmit="return false;">
+                    <!-- Drag-and-drop zone -->
+                    <div id="dropZone" class="drop-zone drop-zone-enhanced text-center p-5 rounded mb-3">
+                        <i class="bi bi-cloud-arrow-up drop-icon"></i>
+                        <p class="mt-2 mb-1 fw-semibold">Drag and drop a file here or click to browse</p>
+                        <p class="mb-2 text-muted small">
+                            Supported: PE, ELF, PDF, Office documents, scripts, archives (max 50 MB)
+                        </p>
+                        <div class="file-type-icons mt-2">
+                            <span><i class="bi bi-filetype-exe"></i>PE</span>
+                            <span><i class="bi bi-filetype-pdf"></i>PDF</span>
+                            <span><i class="bi bi-filetype-doc"></i>Office</span>
+                            <span><i class="bi bi-filetype-py"></i>Script</span>
+                            <span><i class="bi bi-file-earmark-zip"></i>Archive</span>
+                            <span><i class="bi bi-filetype-sh"></i>ELF</span>
+                        </div>
+                        <input type="file" id="fileInput" name="file" class="d-none" required>
+                    </div>
+
+                    <!-- Selected file info (enhanced) -->
+                    <div id="fileInfo" class="file-info-card mb-3" style="display: none;">
+                        <div class="d-flex align-items-start justify-content-between mb-2">
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <i class="bi bi-file-earmark" id="fileTypeIcon" style="font-size: 1.5rem;"></i>
+                                <div>
+                                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                                        <strong id="fileName"></strong>
+                                        <span id="fileTypeBadge" class="file-type-badge badge-generic"></span>
+                                    </div>
+                                    <span id="fileSize" class="text-muted" style="font-size: 0.82rem;"></span>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-danger" id="fileClear" title="Remove file">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                        <!-- Client-side SHA256 preview -->
+                        <div id="hashPreviewArea" style="display: none;">
+                            <div class="hash-preview">
+                                <span class="text-muted" style="font-size: 0.68rem; flex-shrink: 0;">SHA256</span>
+                                <code id="clientSha256"></code>
+                                <button type="button" class="btn-copy-hash" onclick="copyHash(this, 'clientSha256')" title="Copy SHA256">
+                                    <i class="bi bi-clipboard"></i> Copy
+                                </button>
+                            </div>
+                        </div>
+                        <div id="hashComputingArea" style="display: none;">
+                            <span class="computing-hash">
+                                <span class="spinner-border" role="status"></span>
+                                Computing SHA256...
+                            </span>
+                        </div>
+                    </div>
+
+                    <button type="submit" id="fileSubmitBtn" class="btn btn-primary w-100" disabled>
+                        <i class="bi bi-shield-exclamation me-2"></i>Analyze File
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Analysis Engines Panel -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header d-flex align-items-center">
+                <i class="bi bi-gear me-2 text-accent"></i>
+                <h5 class="mb-0">Analysis Engines</h5>
+                <span class="badge bg-primary ms-auto">10</span>
+            </div>
+            <div class="card-body p-3">
+                <div class="engine-item">
+                    <div class="engine-label">
+                        <i class="bi bi-cpu text-accent"></i>
+                        <div>Static Analysis<span class="engine-cat">Core</span></div>
+                    </div>
+                    <span class="badge bg-success engine-status">Active</span>
+                </div>
+                <div class="engine-item">
+                    <div class="engine-label">
+                        <i class="bi bi-fonts text-accent"></i>
+                        <div>String Extraction<span class="engine-cat">Core</span></div>
+                    </div>
+                    <span class="badge bg-success engine-status">Active</span>
+                </div>
+                <div class="engine-item">
+                    <div class="engine-label">
+                        <i class="bi bi-shield-exclamation text-accent"></i>
+                        <div>YARA Rules<span class="engine-cat">Detection</span></div>
+                    </div>
+                    <span class="badge bg-success engine-status">Active</span>
+                </div>
+                <div class="engine-item">
+                    <div class="engine-label">
+                        <i class="bi bi-bullseye text-accent"></i>
+                        <div>IOC Extraction<span class="engine-cat">Detection</span></div>
+                    </div>
+                    <span class="badge bg-success engine-status">Active</span>
+                </div>
+                <div class="engine-item">
+                    <div class="engine-label">
+                        <i class="bi bi-diagram-3 text-accent"></i>
+                        <div>MITRE ATT&amp;CK Mapping<span class="engine-cat">Intel</span></div>
+                    </div>
+                    <span class="badge bg-success engine-status">Active</span>
+                </div>
+                <div class="engine-item">
+                    <div class="engine-label">
+                        <i class="bi bi-hash text-accent"></i>
+                        <div>Hash Reputation<span class="engine-cat">MalwareBazaar</span></div>
+                    </div>
+                    <span class="badge bg-success engine-status">Active</span>
+                </div>
+                <div class="engine-item">
+                    <div class="engine-label">
+                        <i class="bi bi-file-earmark-code text-accent"></i>
+                        <div>Macro Analysis<span class="engine-cat">olevba</span></div>
+                    </div>
+                    <span class="badge bg-success engine-status">Active</span>
+                </div>
+                <div class="engine-item">
+                    <div class="engine-label">
+                        <i class="bi bi-file-earmark-binary text-accent"></i>
+                        <div>PE Analysis<span class="engine-cat">pefile</span></div>
+                    </div>
+                    <span class="badge bg-success engine-status">Active</span>
+                </div>
+                <div class="engine-item">
+                    <div class="engine-label">
+                        <i class="bi bi-bug text-accent"></i>
+                        <div>Malpedia Family<span class="engine-cat">Intel</span></div>
+                    </div>
+                    <span class="badge bg-warning text-dark engine-status">Beta</span>
+                </div>
+                <div class="engine-item">
+                    <div class="engine-label">
+                        <i class="bi bi-graph-up text-accent"></i>
+                        <div>EPSS Score<span class="engine-cat">Risk</span></div>
+                    </div>
+                    <span class="badge bg-success engine-status">Active</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Progress Area (hidden by default) -->
+<div id="fileProgressArea" class="mt-4" style="display: none;">
+    <div class="card">
+        <div class="card-header d-flex align-items-center">
+            <i class="bi bi-hourglass-split me-2 text-accent"></i>
+            <h5 class="mb-0">Analysis in Progress</h5>
+        </div>
+        <div class="card-body">
+            <div class="d-flex align-items-center mb-2">
+                <strong id="fileProgressStatus">Uploading file...</strong>
+                <div class="spinner-border spinner-border-sm ms-auto" role="status" id="fileProgressSpinner">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+            <div class="progress" style="height: 24px;">
+                <div id="fileProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                     role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                    0%
+                </div>
+            </div>
+            <ul id="fileProgressLog" class="list-unstyled mt-3 mb-0 small text-muted"></ul>
+        </div>
+    </div>
+</div>
+
+<!-- Tabbed Results (hidden by default) -->
+<div id="fileResults" class="mt-4" style="display: none;">
+    <div class="card">
+        <div class="card-header">
+            <ul class="nav nav-tabs card-header-tabs" id="resultTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="tab-overview" data-bs-toggle="tab" data-bs-target="#panel-overview"
+                            type="button" role="tab" aria-controls="panel-overview" aria-selected="true">
+                        <i class="bi bi-info-circle me-1"></i>Overview
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-static" data-bs-toggle="tab" data-bs-target="#panel-static"
+                            type="button" role="tab" aria-controls="panel-static" aria-selected="false">
+                        <i class="bi bi-cpu me-1"></i>Static
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-entropy" data-bs-toggle="tab" data-bs-target="#panel-entropy"
+                            type="button" role="tab" aria-controls="panel-entropy" aria-selected="false">
+                        <i class="bi bi-graph-up me-1"></i>Entropy
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-packer" data-bs-toggle="tab" data-bs-target="#panel-packer"
+                            type="button" role="tab" aria-controls="panel-packer" aria-selected="false">
+                        <i class="bi bi-archive me-1"></i>Packer
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-strings" data-bs-toggle="tab" data-bs-target="#panel-strings"
+                            type="button" role="tab" aria-controls="panel-strings" aria-selected="false">
+                        <i class="bi bi-fonts me-1"></i>Strings
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-capabilities" data-bs-toggle="tab" data-bs-target="#panel-capabilities"
+                            type="button" role="tab" aria-controls="panel-capabilities" aria-selected="false">
+                        <i class="bi bi-gear me-1"></i>Capabilities
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-yara" data-bs-toggle="tab" data-bs-target="#panel-yara"
+                            type="button" role="tab" aria-controls="panel-yara" aria-selected="false">
+                        <i class="bi bi-shield-exclamation me-1"></i>YARA
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-shellcode" data-bs-toggle="tab" data-bs-target="#panel-shellcode"
+                            type="button" role="tab" aria-controls="panel-shellcode" aria-selected="false">
+                        <i class="bi bi-bug me-1"></i>Shellcode
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-iocs" data-bs-toggle="tab" data-bs-target="#panel-iocs"
+                            type="button" role="tab" aria-controls="panel-iocs" aria-selected="false">
+                        <i class="bi bi-bullseye me-1"></i>IOCs
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-mitre" data-bs-toggle="tab" data-bs-target="#panel-mitre"
+                            type="button" role="tab" aria-controls="panel-mitre" aria-selected="false">
+                        <i class="bi bi-diagram-3 me-1"></i>MITRE
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-sandbox" data-bs-toggle="tab" data-bs-target="#panel-sandbox"
+                            type="button" role="tab" aria-controls="panel-sandbox" aria-selected="false">
+                        <i class="bi bi-cloud-haze2 me-1"></i>Sandbox
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-scoring" data-bs-toggle="tab" data-bs-target="#panel-scoring"
+                            type="button" role="tab" aria-controls="panel-scoring" aria-selected="false">
+                        <i class="bi bi-bar-chart me-1"></i>Scoring
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-detection" data-bs-toggle="tab" data-bs-target="#panel-detection"
+                            type="button" role="tab" aria-controls="panel-detection" aria-selected="false">
+                        <i class="bi bi-code-square me-1"></i>Detection
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-llm" data-bs-toggle="tab" data-bs-target="#panel-llm"
+                            type="button" role="tab" aria-controls="panel-llm" aria-selected="false">
+                        <i class="bi bi-robot me-1"></i>AI Analysis
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="tab-pipeline" data-bs-toggle="tab" data-bs-target="#panel-pipeline"
+                            type="button" role="tab" aria-controls="panel-pipeline" aria-selected="false">
+                        <i class="bi bi-list-check me-1"></i>Pipeline
+                    </button>
+                </li>
+            </ul>
+        </div>
+        <div class="card-body">
+            <div class="tab-content" id="resultTabContent">
+                <!-- Overview Tab -->
+                <div class="tab-pane fade show active" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+                    <div id="resultOverview">
+                        <div class="tab-placeholder">
+                            <i class="bi bi-speedometer2"></i>
+                            <div class="ph-title">Threat Score Overview</div>
+                            <div class="ph-desc">Upload and analyze a file to see the threat score gauge, verdict, and confidence level.</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Static Tab -->
+                <div class="tab-pane fade" id="panel-static" role="tabpanel" aria-labelledby="tab-static">
+                    <div id="resultStatic">
+                        <div class="tab-placeholder">
+                            <i class="bi bi-file-earmark-binary"></i>
+                            <div class="ph-title">Static Analysis</div>
+                            <div class="ph-desc">PE headers, ELF sections, import/export tables, and binary structure details will be displayed here.</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Entropy Tab -->
+                <div class="tab-pane fade" id="panel-entropy" role="tabpanel" aria-labelledby="tab-entropy">
+                    <div id="resultEntropy">
+                        <div class="tab-placeholder">
+                            <i class="bi bi-graph-up"></i>
+                            <div class="ph-title">Entropy Analysis</div>
+                            <div class="ph-desc">Overall file entropy, per-section entropy values, byte frequency distribution, and high entropy region detection.</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Packer Tab -->
+                <div class="tab-pane fade" id="panel-packer" role="tabpanel" aria-labelledby="tab-packer">
+                    <div id="resultPacker">
+                        <div class="tab-placeholder">
+                            <i class="bi bi-archive"></i>
+                            <div class="ph-title">Packer Detection</div>
+                            <div class="ph-desc">Detected packer/protector information including name, version, confidence level, and detection method.</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Strings Tab -->
+                <div class="tab-pane fade" id="panel-strings" role="tabpanel" aria-labelledby="tab-strings">
+                    <div id="resultStrings">
+                        <div class="tab-placeholder">
+                            <i class="bi bi-search"></i>
+                            <div class="ph-title">String Extraction</div>
+                            <div class="ph-desc">Interesting strings will be highlighted including URLs, IPs, registry keys, file paths, and suspicious API calls.</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Capabilities Tab -->
+                <div class="tab-pane fade" id="panel-capabilities" role="tabpanel" aria-labelledby="tab-capabilities">
+                    <div id="resultCapabilities">
+                        <div class="tab-placeholder">
+                            <i class="bi bi-gear"></i>
+                            <div class="ph-title">Capabilities</div>
+                            <div class="ph-desc">MITRE ATT&CK techniques and capability mapping derived from static and behavioral analysis.</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- YARA Tab -->
+                <div class="tab-pane fade" id="panel-yara" role="tabpanel" aria-labelledby="tab-yara">
+                    <div id="resultYara">
+                        <div class="tab-placeholder">
+                            <i class="bi bi-shield-check"></i>
+                            <div class="ph-title">YARA Rule Matches</div>
+                            <div class="ph-desc">Matched YARA rules with severity ratings, rule metadata, and matched offsets will appear here.</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Shellcode Tab -->
+                <div class="tab-pane fade" id="panel-shellcode" role="tabpanel" aria-labelledby="tab-shellcode">
+                    <div id="resultShellcode">
+                        <div class="tab-placeholder">
+                            <i class="bi bi-bug"></i>
+                            <div class="ph-title">Shellcode Detection</div>
+                            <div class="ph-desc">Detected shellcode patterns including technique, offset, confidence level, and associated framework.</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- IOCs Tab -->
+                <div class="tab-pane fade" id="panel-iocs" role="tabpanel" aria-labelledby="tab-iocs">
+                    <div id="resultIocs">
+                        <div class="tab-placeholder">
+                            <i class="bi bi-crosshair"></i>
+                            <div class="ph-title">Indicators of Compromise</div>
+                            <div class="ph-desc">Extracted IPs, domains, URLs, hashes, email addresses, and other IOCs will be listed here for triage.</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- MITRE Tab -->
+                <div class="tab-pane fade" id="panel-mitre" role="tabpanel" aria-labelledby="tab-mitre">
+                    <div id="resultMitre">
+                        <div class="tab-placeholder">
+                            <i class="bi bi-diagram-3"></i>
+                            <div class="ph-title">MITRE ATT&amp;CK Mapping</div>
+                            <div class="ph-desc">Detected techniques mapped to MITRE ATT&amp;CK framework with tactic categories and technique IDs.</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Sandbox Tab -->
+                <div class="tab-pane fade" id="panel-sandbox" role="tabpanel" aria-labelledby="tab-sandbox">
+                    <div id="resultSandbox">
+                        <div class="tab-placeholder">
+                            <i class="bi bi-cloud-haze2"></i>
+                            <div class="ph-title">Sandbox &amp; Dynamic Analysis</div>
+                            <div class="ph-desc">VirusTotal behavior, ANY.RUN sandbox results, MITRE ATT&amp;CK techniques from dynamic analysis, processes created, and network activity.</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Scoring Tab -->
+                <div class="tab-pane fade" id="panel-scoring" role="tabpanel" aria-labelledby="tab-scoring">
+                    <div id="resultScoring">
+                        <div class="tab-placeholder">
+                            <i class="bi bi-bar-chart"></i>
+                            <div class="ph-title">Scoring Breakdown</div>
+                            <div class="ph-desc">Detailed breakdown of threat scoring by analysis engine, contributing factors, and confidence metrics.</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Detection Rules Tab -->
+                <div class="tab-pane fade" id="panel-detection" role="tabpanel" aria-labelledby="tab-detection">
+                    <div id="resultDetection">
+                        <div class="tab-placeholder">
+                            <i class="bi bi-code-square"></i>
+                            <div class="ph-title">Detection Rules</div>
+                            <div class="ph-desc">Auto-generated KQL, SPL, YARA, and Sigma detection rules ready to deploy in your SIEM.</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- LLM Analysis Tab -->
+                <div class="tab-pane fade" id="panel-llm" role="tabpanel" aria-labelledby="tab-llm">
+                    <div id="resultLlm">
+                        <div class="tab-placeholder">
+                            <i class="bi bi-robot"></i>
+                            <div class="ph-title">AI Analysis</div>
+                            <div class="ph-desc">AI-powered verdict, detailed analysis text, and actionable recommendations from the LLM engine.</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Pipeline Tab -->
+                <div class="tab-pane fade" id="panel-pipeline" role="tabpanel" aria-labelledby="tab-pipeline">
+                    <div id="resultPipeline">
+                        <div class="tab-placeholder">
+                            <i class="bi bi-list-check"></i>
+                            <div class="ph-title">Analysis Pipeline</div>
+                            <div class="ph-desc">Timeline of analysis phases showing what ran, duration, and completion status.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent Uploads Section -->
+<div id="recentUploadsSection" class="recent-uploads-section" style="display: none;">
+    <div class="card">
+        <div class="card-header d-flex align-items-center">
+            <i class="bi bi-clock-history me-2 text-accent"></i>
+            <h5 class="mb-0">Recent File Analyses</h5>
+            <button class="btn btn-sm btn-outline-secondary ms-auto" onclick="clearRecentUploads()" title="Clear history">
+                <i class="bi bi-trash3"></i>
+            </button>
+        </div>
+        <div class="card-body p-0" id="recentUploadsList">
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    'use strict';
+
+    /* --- DOM references --- */
+    var dropZone = document.getElementById('dropZone');
+    var fileInput = document.getElementById('fileInput');
+    var fileInfo = document.getElementById('fileInfo');
+    var fileName = document.getElementById('fileName');
+    var fileSize = document.getElementById('fileSize');
+    var fileClear = document.getElementById('fileClear');
+    var submitBtn = document.getElementById('fileSubmitBtn');
+    var form = document.getElementById('fileForm');
+
+    var progressArea = document.getElementById('fileProgressArea');
+    var progressBar = document.getElementById('fileProgressBar');
+    var progressStatus = document.getElementById('fileProgressStatus');
+    var progressLog = document.getElementById('fileProgressLog');
+    var progressSpinner = document.getElementById('fileProgressSpinner');
+    var resultsArea = document.getElementById('fileResults');
+
+    var fileTypeIcon = document.getElementById('fileTypeIcon');
+    var fileTypeBadge = document.getElementById('fileTypeBadge');
+    var hashPreviewArea = document.getElementById('hashPreviewArea');
+    var hashComputingArea = document.getElementById('hashComputingArea');
+    var clientSha256El = document.getElementById('clientSha256');
+
+    /* --- File type detection --- */
+    var FILE_TYPE_MAP = {
+        'exe': { icon: 'bi-filetype-exe', badge: 'badge-pe', label: 'PE Executable', cat: 'PE' },
+        'dll': { icon: 'bi-filetype-dll', badge: 'badge-pe', label: 'PE Library', cat: 'PE' },
+        'sys': { icon: 'bi-file-earmark-binary', badge: 'badge-pe', label: 'PE Driver', cat: 'PE' },
+        'scr': { icon: 'bi-filetype-exe', badge: 'badge-pe', label: 'PE Screensaver', cat: 'PE' },
+        'elf': { icon: 'bi-filetype-sh', badge: 'badge-elf', label: 'ELF Binary', cat: 'ELF' },
+        'so': { icon: 'bi-filetype-sh', badge: 'badge-elf', label: 'Shared Object', cat: 'ELF' },
+        'pdf': { icon: 'bi-filetype-pdf', badge: 'badge-pdf', label: 'PDF Document', cat: 'PDF' },
+        'doc': { icon: 'bi-filetype-doc', badge: 'badge-doc', label: 'Word Document', cat: 'Office' },
+        'docx': { icon: 'bi-filetype-docx', badge: 'badge-doc', label: 'Word Document', cat: 'Office' },
+        'docm': { icon: 'bi-filetype-doc', badge: 'badge-doc', label: 'Macro-Enabled Doc', cat: 'Office' },
+        'xls': { icon: 'bi-filetype-xls', badge: 'badge-doc', label: 'Excel Spreadsheet', cat: 'Office' },
+        'xlsx': { icon: 'bi-filetype-xlsx', badge: 'badge-doc', label: 'Excel Spreadsheet', cat: 'Office' },
+        'xlsm': { icon: 'bi-filetype-xls', badge: 'badge-doc', label: 'Macro-Enabled XLS', cat: 'Office' },
+        'ppt': { icon: 'bi-filetype-ppt', badge: 'badge-doc', label: 'PowerPoint', cat: 'Office' },
+        'pptx': { icon: 'bi-filetype-pptx', badge: 'badge-doc', label: 'PowerPoint', cat: 'Office' },
+        'py': { icon: 'bi-filetype-py', badge: 'badge-script', label: 'Python Script', cat: 'Script' },
+        'ps1': { icon: 'bi-terminal', badge: 'badge-script', label: 'PowerShell', cat: 'Script' },
+        'vbs': { icon: 'bi-filetype-cs', badge: 'badge-script', label: 'VBScript', cat: 'Script' },
+        'js': { icon: 'bi-filetype-js', badge: 'badge-script', label: 'JavaScript', cat: 'Script' },
+        'bat': { icon: 'bi-terminal', badge: 'badge-script', label: 'Batch Script', cat: 'Script' },
+        'cmd': { icon: 'bi-terminal', badge: 'badge-script', label: 'CMD Script', cat: 'Script' },
+        'sh': { icon: 'bi-filetype-sh', badge: 'badge-script', label: 'Shell Script', cat: 'Script' },
+        'zip': { icon: 'bi-file-earmark-zip', badge: 'badge-archive', label: 'ZIP Archive', cat: 'Archive' },
+        'rar': { icon: 'bi-file-earmark-zip', badge: 'badge-archive', label: 'RAR Archive', cat: 'Archive' },
+        '7z': { icon: 'bi-file-earmark-zip', badge: 'badge-archive', label: '7-Zip Archive', cat: 'Archive' },
+        'gz': { icon: 'bi-file-earmark-zip', badge: 'badge-archive', label: 'GZip Archive', cat: 'Archive' },
+        'tar': { icon: 'bi-file-earmark-zip', badge: 'badge-archive', label: 'TAR Archive', cat: 'Archive' },
+        'iso': { icon: 'bi-disc', badge: 'badge-archive', label: 'ISO Image', cat: 'Archive' }
+    };
+
+    function getFileTypeInfo(filename) {
+        var ext = (filename.split('.').pop() || '').toLowerCase();
+        return FILE_TYPE_MAP[ext] || { icon: 'bi-file-earmark', badge: 'badge-generic', label: ext.toUpperCase() || 'Unknown', cat: 'File' };
+    }
+
+    /* --- Helpers --- */
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1048576).toFixed(1) + ' MB';
+    }
+
+    /* --- Client-side SHA256 using SubtleCrypto --- */
+    function computeSha256(file) {
+        hashComputingArea.style.display = 'block';
+        hashPreviewArea.style.display = 'none';
+
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            crypto.subtle.digest('SHA-256', e.target.result).then(function (hashBuffer) {
+                var hashArray = Array.from(new Uint8Array(hashBuffer));
+                var hashHex = hashArray.map(function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+                clientSha256El.textContent = hashHex;
+                hashComputingArea.style.display = 'none';
+                hashPreviewArea.style.display = 'block';
+            }).catch(function () {
+                hashComputingArea.style.display = 'none';
+            });
+        };
+        reader.onerror = function () {
+            hashComputingArea.style.display = 'none';
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function showFileInfo(file) {
+        var typeInfo = getFileTypeInfo(file.name);
+
+        fileName.textContent = file.name;
+        fileSize.textContent = formatFileSize(file.size);
+
+        /* Update file type icon */
+        fileTypeIcon.className = 'bi ' + typeInfo.icon;
+        fileTypeIcon.style.fontSize = '1.5rem';
+
+        /* Update file type badge */
+        fileTypeBadge.className = 'file-type-badge ' + typeInfo.badge;
+        fileTypeBadge.textContent = typeInfo.label;
+
+        fileInfo.style.display = 'block';
+        submitBtn.disabled = false;
+
+        /* Compute client-side SHA256 */
+        computeSha256(file);
+    }
+
+    function clearFile() {
+        fileInput.value = '';
+        fileInfo.style.display = 'none';
+        hashPreviewArea.style.display = 'none';
+        hashComputingArea.style.display = 'none';
+        submitBtn.disabled = true;
+    }
+
+    function setProgress(pct, message) {
+        progressBar.style.width = pct + '%';
+        progressBar.setAttribute('aria-valuenow', pct);
+        progressBar.textContent = pct + '%';
+        if (message) {
+            progressStatus.textContent = message;
+            var li = document.createElement('li');
+            li.textContent = message;
+            progressLog.appendChild(li);
+        }
+    }
+
+    /**
+     * Render pre-sanitized HTML from analysis.js renderFileResult() into a container.
+     * renderFileResult escapes all user-sourced data via escHtml() before building
+     * HTML strings - this is the designated safe rendering path per app architecture.
+     */
+    function setSanitizedHTML(el, html) {
+        /* eslint-disable no-unsanitized/property -- pre-sanitized via escHtml in analysis.js */
+        el.innerHTML = html; // SAFE: content from renderFileResult uses escHtml for all user data
+        /* eslint-enable no-unsanitized/property */
+    }
+
+    /* --- Threat Gauge SVG Renderer --- */
+    window.renderThreatGauge = function (score, confidence) {
+        score = Math.max(0, Math.min(100, parseInt(score, 10) || 0));
+        confidence = confidence || 'Medium';
+
+        var colorClass, color, verdict;
+        if (score <= 30) {
+            colorClass = 'gauge-green'; color = '#198754'; verdict = 'Clean';
+        } else if (score <= 60) {
+            colorClass = 'gauge-orange'; color = '#fd7e14'; verdict = 'Suspicious';
+        } else {
+            colorClass = 'gauge-red'; color = '#dc3545'; verdict = 'Malicious';
+        }
+
+        /* Arc calculation: 180-degree semicircle gauge */
+        var radius = 70;
+        var cx = 90, cy = 90;
+        var startAngle = Math.PI;
+        var endAngle = Math.PI + (Math.PI * score / 100);
+        var x1 = cx + radius * Math.cos(startAngle);
+        var y1 = cy + radius * Math.sin(startAngle);
+        var x2 = cx + radius * Math.cos(endAngle);
+        var y2 = cy + radius * Math.sin(endAngle);
+        var largeArc = score > 50 ? 1 : 0;
+
+        var svg = '<svg class="threat-gauge-svg" viewBox="0 0 180 110">'
+            + '<path d="M ' + x1 + ' ' + y1 + ' A ' + radius + ' ' + radius + ' 0 0 1 ' + (cx + radius) + ' ' + cy + '"'
+            + ' fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="12" stroke-linecap="round"/>'
+            + '<path d="M ' + x1 + ' ' + y1 + ' A ' + radius + ' ' + radius + ' 0 ' + largeArc + ' 1 ' + x2 + ' ' + y2 + '"'
+            + ' fill="none" stroke="' + color + '" stroke-width="12" stroke-linecap="round"/>'
+            + '</svg>';
+
+        return '<div class="threat-gauge-container">'
+            + svg
+            + '<div class="threat-gauge-score ' + colorClass + '">' + score + '</div>'
+            + '<div class="threat-gauge-verdict ' + colorClass + '">' + verdict + '</div>'
+            + '<div class="threat-gauge-confidence">Confidence: ' + confidence + '</div>'
+            + '</div>';
+    };
+
+    /* --- Hash Display Card Builder --- */
+    window.renderHashCard = function (md5, sha1, sha256, extraHashes) {
+        function row(label, value) {
+            if (!value) return '';
+            var id = 'hash-' + label.toLowerCase().replace(/[^a-z0-9]/g, '');
+            return '<div class="hash-row">'
+                + '<span class="hash-label">' + label + '</span>'
+                + '<span class="hash-value" id="' + id + '">' + (value || 'N/A') + '</span>'
+                + '<button type="button" class="btn-copy-hash" onclick="copyHash(this, \'' + id + '\')" title="Copy ' + label + '">'
+                + '<i class="bi bi-clipboard"></i> Copy</button>'
+                + '</div>';
+        }
+        var extra = extraHashes || {};
+        return '<div class="hash-card mt-3">'
+            + '<div class="d-flex align-items-center gap-2 mb-2"><i class="bi bi-fingerprint text-accent"></i><strong style="font-size:0.9rem;">File Hashes</strong></div>'
+            + row('MD5', md5)
+            + row('SHA1', sha1)
+            + row('SHA256', sha256)
+            + row('SHA512', extra.sha512)
+            + row('SSDEEP', extra.ssdeep)
+            + row('TLSH', extra.tlsh)
+            + row('IMPHASH', extra.imphash)
+            + '</div>';
+    };
+
+    /* --- Copy Hash to Clipboard --- */
+    window.copyHash = function (btn, sourceId) {
+        var el = document.getElementById(sourceId);
+        if (!el) return;
+        var text = el.textContent || el.innerText;
+        navigator.clipboard.writeText(text.trim()).then(function () {
+            btn.classList.add('copied');
+            var origInner = btn.textContent;
+            var origHTML = btn.querySelector('i') ? '<i class="bi bi-clipboard"></i> Copy' : origInner;
+            btn.textContent = '';
+            var icon = document.createElement('i');
+            icon.className = 'bi bi-check-lg';
+            btn.appendChild(icon);
+            btn.appendChild(document.createTextNode(' Copied'));
+            setTimeout(function () {
+                btn.classList.remove('copied');
+                btn.textContent = '';
+                var restoreIcon = document.createElement('i');
+                restoreIcon.className = 'bi bi-clipboard';
+                btn.appendChild(restoreIcon);
+                btn.appendChild(document.createTextNode(' Copy'));
+            }, 1500);
+        });
+    };
+
+    /* --- Recent Uploads (localStorage) --- */
+    var RECENT_KEY = 'bta_recent_file_analyses';
+    var MAX_RECENT = 3;
+
+    function getRecentUploads() {
+        try {
+            return JSON.parse(localStorage.getItem(RECENT_KEY)) || [];
+        } catch (e) { return []; }
+    }
+
+    function saveRecentUpload(entry) {
+        var recents = getRecentUploads();
+        recents.unshift(entry);
+        if (recents.length > MAX_RECENT) recents = recents.slice(0, MAX_RECENT);
+        localStorage.setItem(RECENT_KEY, JSON.stringify(recents));
+        renderRecentUploads();
+    }
+
+    function renderRecentUploads() {
+        var recents = getRecentUploads();
+        var section = document.getElementById('recentUploadsSection');
+        var list = document.getElementById('recentUploadsList');
+        if (!recents.length) {
+            section.style.display = 'none';
+            return;
+        }
+        section.style.display = 'block';
+
+        /* Clear existing children safely */
+        while (list.firstChild) { list.removeChild(list.firstChild); }
+
+        recents.forEach(function (r) {
+            var typeInfo = getFileTypeInfo(r.name || 'file');
+
+            var verdictClass = 'ru-verdict-unknown';
+            var verdictLabel = r.verdict || 'Analyzed';
+            var vl = verdictLabel.toLowerCase();
+            if (vl === 'clean' || vl === 'benign') verdictClass = 'ru-verdict-clean';
+            else if (vl === 'suspicious') verdictClass = 'ru-verdict-suspicious';
+            else if (vl === 'malicious') verdictClass = 'ru-verdict-malicious';
+
+            var item = document.createElement('div');
+            item.className = 'recent-upload-item';
+
+            var iconDiv = document.createElement('div');
+            iconDiv.className = 'ru-icon';
+            iconDiv.style.background = 'rgba(var(--bs-primary-rgb,13,110,253),0.1)';
+            var iconI = document.createElement('i');
+            iconI.className = 'bi ' + typeInfo.icon;
+            iconDiv.appendChild(iconI);
+
+            var detailsDiv = document.createElement('div');
+            detailsDiv.className = 'ru-details';
+            var nameDiv = document.createElement('div');
+            nameDiv.className = 'ru-name';
+            nameDiv.textContent = r.name || 'Unknown';
+            var metaDiv = document.createElement('div');
+            metaDiv.className = 'ru-meta';
+            metaDiv.textContent = (r.size || '') + ' \u00B7 ' + (r.date || '');
+            detailsDiv.appendChild(nameDiv);
+            detailsDiv.appendChild(metaDiv);
+
+            var verdictSpan = document.createElement('span');
+            verdictSpan.className = 'ru-verdict ' + verdictClass;
+            verdictSpan.textContent = verdictLabel;
+
+            item.appendChild(iconDiv);
+            item.appendChild(detailsDiv);
+            item.appendChild(verdictSpan);
+            list.appendChild(item);
+        });
+    }
+
+    window.clearRecentUploads = function () {
+        localStorage.removeItem(RECENT_KEY);
+        renderRecentUploads();
+    };
+
+    /* Render recent uploads on page load */
+    renderRecentUploads();
+
+    /* --- Drag-and-drop --- */
+    if (dropZone) {
+        dropZone.addEventListener('click', function () {
+            fileInput.click();
+        });
+
+        dropZone.addEventListener('dragenter', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.classList.remove('drag-over');
+            if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files;
+                showFileInfo(e.dataTransfer.files[0]);
+            }
+        });
+    }
+
+    if (fileInput) {
+        fileInput.addEventListener('change', function () {
+            if (fileInput.files && fileInput.files.length > 0) {
+                showFileInfo(fileInput.files[0]);
+            }
+        });
+    }
+
+    if (fileClear) {
+        fileClear.addEventListener('click', function (e) {
+            e.stopPropagation();
+            clearFile();
+        });
+    }
+
+    /* --- Form submission --- */
+    if (form) {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            if (typeof window.startFileAnalysis !== 'function') {
+                alert('Analysis engine not loaded. Please refresh the page.');
+                return;
+            }
+            if (!fileInput.files || !fileInput.files.length) return;
+
+            var currentFile = fileInput.files[0];
+
+            progressArea.style.display = 'block';
+            resultsArea.style.display = 'none';
+            while (progressLog.firstChild) { progressLog.removeChild(progressLog.firstChild); }
+            progressBar.classList.remove('bg-danger');
+            progressSpinner.style.display = '';
+            setProgress(0, 'Uploading file...');
+
+            window.startFileAnalysis(currentFile, {
+                onProgress: function (data) {
+                    setProgress(data.percent || 0, data.message || '');
+                },
+                onComplete: function (data) {
+                    setProgress(100, 'Analysis complete.');
+                    progressSpinner.style.display = 'none';
+                    resultsArea.style.display = 'block';
+
+                    /* Populate tabs - content from renderFileResult is pre-sanitized via escHtml */
+                    if (data.overview) setSanitizedHTML(document.getElementById('resultOverview'), data.overview);
+                    if (data.static) setSanitizedHTML(document.getElementById('resultStatic'), data.static);
+                    if (data.entropy) setSanitizedHTML(document.getElementById('resultEntropy'), data.entropy);
+                    if (data.packer) setSanitizedHTML(document.getElementById('resultPacker'), data.packer);
+                    if (data.strings) setSanitizedHTML(document.getElementById('resultStrings'), data.strings);
+                    if (data.capabilities) setSanitizedHTML(document.getElementById('resultCapabilities'), data.capabilities);
+                    if (data.yara) setSanitizedHTML(document.getElementById('resultYara'), data.yara);
+                    if (data.shellcode) setSanitizedHTML(document.getElementById('resultShellcode'), data.shellcode);
+                    if (data.iocs) setSanitizedHTML(document.getElementById('resultIocs'), data.iocs);
+                    if (data.mitre) setSanitizedHTML(document.getElementById('resultMitre'), data.mitre);
+                    if (data.sandbox) setSanitizedHTML(document.getElementById('resultSandbox'), data.sandbox);
+                    if (data.scoring) setSanitizedHTML(document.getElementById('resultScoring'), data.scoring);
+                    if (data.detection) setSanitizedHTML(document.getElementById('resultDetection'), data.detection);
+                    if (data.llm) setSanitizedHTML(document.getElementById('resultLlm'), data.llm);
+                    if (data.pipeline) setSanitizedHTML(document.getElementById('resultPipeline'), data.pipeline);
+
+                    /* Save to recent uploads */
+                    var verdict = 'Analyzed';
+                    if (data.threat_score !== undefined) {
+                        var s = parseInt(data.threat_score, 10);
+                        if (s <= 30) verdict = 'Clean';
+                        else if (s <= 60) verdict = 'Suspicious';
+                        else verdict = 'Malicious';
+                    }
+                    saveRecentUpload({
+                        name: currentFile.name,
+                        size: formatFileSize(currentFile.size),
+                        verdict: verdict,
+                        date: new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})
+                    });
+                },
+                onError: function (err) {
+                    setProgress(0, 'Error: ' + (err.message || err));
+                    progressBar.classList.add('bg-danger');
+                    progressSpinner.style.display = 'none';
+                }
+            });
+        });
+    }
+
+    /* ========================================================
+       AUTO-LOAD FROM URL ?id= PARAMETER
+    ======================================================== */
+    var params = new URLSearchParams(window.location.search);
+    var analysisId = params.get('id');
+    if (analysisId) {
+        progressArea.style.display = 'block';
+        setProgress(5, 'Loading analysis...');
+        progressSpinner.style.display = '';
+
+        var safeId = encodeURIComponent(analysisId);
+
+        fetch('/api/analysis/' + safeId + '/status')
+            .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function (statusData) {
+                if (statusData.status === 'completed' || statusData.status === 'complete') {
+                    return fetch('/api/analysis/' + safeId)
+                        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                        .then(function (fullResult) {
+                            setProgress(100, 'Analysis loaded.');
+                            progressSpinner.style.display = 'none';
+                            resultsArea.style.display = 'block';
+
+                            if (typeof window.renderFileResult === 'function') {
+                                var data = window.renderFileResult(fullResult);
+                                if (data.overview) setSanitizedHTML(document.getElementById('resultOverview'), data.overview);
+                                if (data.static) setSanitizedHTML(document.getElementById('resultStatic'), data.static);
+                                if (data.entropy) setSanitizedHTML(document.getElementById('resultEntropy'), data.entropy);
+                                if (data.packer) setSanitizedHTML(document.getElementById('resultPacker'), data.packer);
+                                if (data.strings) setSanitizedHTML(document.getElementById('resultStrings'), data.strings);
+                                if (data.capabilities) setSanitizedHTML(document.getElementById('resultCapabilities'), data.capabilities);
+                                if (data.yara) setSanitizedHTML(document.getElementById('resultYara'), data.yara);
+                                if (data.shellcode) setSanitizedHTML(document.getElementById('resultShellcode'), data.shellcode);
+                                if (data.iocs) setSanitizedHTML(document.getElementById('resultIocs'), data.iocs);
+                                if (data.mitre) setSanitizedHTML(document.getElementById('resultMitre'), data.mitre);
+                                if (data.sandbox) setSanitizedHTML(document.getElementById('resultSandbox'), data.sandbox);
+                                if (data.scoring) setSanitizedHTML(document.getElementById('resultScoring'), data.scoring);
+                                if (data.detection) setSanitizedHTML(document.getElementById('resultDetection'), data.detection);
+                                if (data.llm) setSanitizedHTML(document.getElementById('resultLlm'), data.llm);
+                                if (data.pipeline) setSanitizedHTML(document.getElementById('resultPipeline'), data.pipeline);
+                            } else {
+                                var res = fullResult.result || fullResult;
+                                setSanitizedHTML(document.getElementById('resultOverview'),
+                                    '<pre style="white-space:pre-wrap;word-break:break-word;">' + JSON.stringify(res, null, 2).replace(/</g, '&lt;') + '</pre>');
+                            }
+                        });
+                }
+                if (statusData.status === 'failed' || statusData.status === 'error') {
+                    setProgress(0, 'Analysis failed: ' + (statusData.current_step || 'Unknown error'));
+                    progressBar.classList.add('bg-danger');
+                    progressSpinner.style.display = 'none';
+                    return;
+                }
+                setProgress(statusData.progress || 10, statusData.current_step || 'Resuming...');
+            })
+            .catch(function (err) {
+                setProgress(0, 'Error loading analysis: ' + err.message);
+                progressBar.classList.add('bg-danger');
+                progressSpinner.style.display = 'none';
+            });
+    }
+})();
+</script>
+{% endblock %}

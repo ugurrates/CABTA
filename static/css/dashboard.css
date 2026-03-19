@@ -1,0 +1,190 @@
+/**
+ * Blue Team Assistant - Dashboard & Page-Specific Styles
+ * Author: Ugur Ates
+ *
+ * Additional styles not covered by themes.css.
+ * Mostly layout tweaks and page-specific components.
+ */
+
+/* =========================================================
+   Quick IOC Form (dashboard page)
+   ========================================================= */
+.quick-ioc-form {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+}
+
+.quick-ioc-form input[type="text"] {
+    flex: 1;
+}
+
+.quick-ioc-form button {
+    white-space: nowrap;
+}
+
+/* =========================================================
+   Analysis Results Container (analysis.js render target)
+   ========================================================= */
+#analysis-results,
+.results-container {
+    display: none;
+}
+
+#analysis-results.visible,
+.results-container.visible {
+    display: block;
+}
+
+.results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.results-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+}
+
+.result-section {
+    margin-bottom: 1rem;
+    padding: 1rem;
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.result-section h4 {
+    margin: 0 0 0.5rem;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
+/* =========================================================
+   Score Gauge (report view)
+   ========================================================= */
+.score-gauge {
+    position: relative;
+    width: 160px;
+    height: 160px;
+    margin: 0 auto;
+}
+
+.score-gauge canvas {
+    width: 100%;
+    height: 100%;
+}
+
+.score-gauge .score-value {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.score-gauge .score-label {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+}
+
+/* =========================================================
+   Detail Section (report view)
+   ========================================================= */
+.detail-section {
+    border-left: 3px solid var(--color-primary);
+    padding-left: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+/* =========================================================
+   Analysis Progress (legacy analysis-progress container)
+   ========================================================= */
+#analysis-progress {
+    display: none;
+}
+
+#analysis-progress.visible {
+    display: block;
+}
+
+/* =========================================================
+   Chart containers
+   ========================================================= */
+.chart-container {
+    position: relative;
+}
+
+.chart-container canvas {
+    max-width: 100%;
+}
+
+/* =========================================================
+   Case detail note styles
+   ========================================================= */
+.case-meta dt {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.case-meta dd {
+    margin: 0 0 0.75rem;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+/* =========================================================
+   Drag-and-drop active state extra
+   ========================================================= */
+.drop-zone.drag-active {
+    border-color: var(--color-primary) !important;
+    background-color: rgba(88, 166, 255, 0.05) !important;
+}
+
+/* =========================================================
+   Code blocks in results
+   ========================================================= */
+.result-code {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.75rem;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.83rem;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+/* =========================================================
+   Table text truncation
+   ========================================================= */
+.table .text-truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* =========================================================
+   Bootstrap overrides for themed inputs
+   ========================================================= */
+.form-control:disabled,
+.form-select:disabled {
+    opacity: 0.5;
+}

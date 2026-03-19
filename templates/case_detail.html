@@ -1,0 +1,456 @@
+{# Author: Ugur Ates #}
+{# Case Detail - single case view with status management, notes, and linked analyses #}
+{% extends "base.html" %}
+
+{% block title %}Case {{ case.id | default('N/A') | e }} - Blue Team Assistant{% endblock %}
+{% block page_title %}Case Detail{% endblock %}
+{% block page_subtitle %}<span class="page-subtitle">{{ case.title | default('') | e }}</span>{% endblock %}
+
+{% block extra_head %}
+<style>
+    .case-meta dt {
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+    .case-meta dd {
+        margin: 0 0 0.75rem;
+        font-size: 0.9rem;
+        color: var(--text-primary);
+    }
+    .note-card {
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.75rem;
+        border-left: 3px solid var(--color-primary);
+        background-color: var(--bg-tertiary);
+        border-radius: 4px;
+    }
+    .note-card .note-meta {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        margin-bottom: 0.35rem;
+    }
+    .note-card .note-content {
+        font-size: 0.9rem;
+        color: var(--text-primary);
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Back button + status controls -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <a href="/cases" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Back to Cases
+    </a>
+    <div class="d-flex align-items-center gap-2">
+        <label for="statusSelect" class="form-label mb-0" style="color: var(--text-secondary); font-size: 0.85rem;">
+            Status:
+        </label>
+        <select id="statusSelect" class="form-select form-select-sm" style="width: auto;">
+            <option value="Open" {% if case.status == 'Open' %}selected{% endif %}>Open</option>
+            <option value="Investigating" {% if case.status == 'Investigating' %}selected{% endif %}>Investigating</option>
+            <option value="Resolved" {% if case.status == 'Resolved' %}selected{% endif %}>Resolved</option>
+            <option value="Closed" {% if case.status == 'Closed' %}selected{% endif %}>Closed</option>
+        </select>
+    </div>
+</div>
+
+<!-- Case Overview Card -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-folder2-open me-2"></i>{{ case.title | e }}</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-lg-8">
+                {% if case.description %}
+                <p style="color: var(--text-primary); white-space: pre-wrap;">{{ case.description | e }}</p>
+                {% else %}
+                <p style="color: var(--text-secondary);">No description provided.</p>
+                {% endif %}
+            </div>
+            <div class="col-lg-4">
+                <dl class="case-meta">
+                    <dt>Case ID</dt>
+                    <dd><code>{{ case.id | e }}</code></dd>
+                    <dt>Severity</dt>
+                    <dd>
+                        {% if case.severity == 'critical' %}
+                            <span class="badge badge-danger">Critical</span>
+                        {% elif case.severity == 'high' %}
+                            <span class="badge" style="background-color: #e65100;">High</span>
+                        {% elif case.severity == 'medium' %}
+                            <span class="badge badge-warning">Medium</span>
+                        {% elif case.severity == 'low' %}
+                            <span class="badge badge-info">Low</span>
+                        {% else %}
+                            <span class="badge badge-info">{{ case.severity | default('N/A') | e }}</span>
+                        {% endif %}
+                    </dd>
+                    <dt>Status</dt>
+                    <dd>
+                        {% if case.status == 'Open' %}
+                            <span class="badge badge-primary" id="statusBadge">Open</span>
+                        {% elif case.status == 'Investigating' %}
+                            <span class="badge badge-warning" id="statusBadge">Investigating</span>
+                        {% elif case.status == 'Resolved' %}
+                            <span class="badge badge-success" id="statusBadge">Resolved</span>
+                        {% elif case.status == 'Closed' %}
+                            <span class="badge badge-info" id="statusBadge">Closed</span>
+                        {% else %}
+                            <span class="badge badge-info" id="statusBadge">{{ case.status | default('N/A') | e }}</span>
+                        {% endif %}
+                    </dd>
+                    <dt>Created</dt>
+                    <dd>{{ case.created_at | default('N/A') | e }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Linked Analyses -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-link-45deg me-2"></i>Linked Analyses</h5>
+        <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#linkAnalysisModal">
+            <i class="bi bi-plus-lg me-1"></i>Link Analysis
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover mb-0">
+                <thead>
+                    <tr style="background-color: var(--bg-tertiary);">
+                        <th>Analysis ID</th>
+                        <th>Linked At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="analysesTableBody">
+                    {% if case.analyses %}
+                        {% for analysis in case.analyses %}
+                        <tr>
+                            <td>
+                                <a href="/report/{{ analysis.analysis_id | e }}" style="color: var(--color-primary); text-decoration: none;">
+                                    <code>{{ analysis.analysis_id | e }}</code>
+                                </a>
+                            </td>
+                            <td>{{ analysis.linked_at | default('') | e }}</td>
+                            <td>
+                                <a href="/report/{{ analysis.analysis_id | e }}" class="btn btn-sm btn-outline-primary" title="View Report">
+                                    <i class="bi bi-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr id="noAnalysesRow">
+                            <td colspan="3" class="text-center py-4" style="color: var(--text-secondary);">
+                                No analyses linked to this case yet.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Notes Section -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-chat-left-text me-2"></i>Notes</h5>
+    </div>
+    <div class="card-body">
+        <!-- Existing notes -->
+        <div id="notesContainer">
+            {% if case.notes %}
+                {% for note in case.notes %}
+                <div class="note-card">
+                    <div class="note-meta">
+                        <i class="bi bi-person me-1"></i><strong>{{ note.author | default('Unknown') | e }}</strong>
+                        <span class="ms-2"><i class="bi bi-clock me-1"></i>{{ note.created_at | default('') | e }}</span>
+                    </div>
+                    <div class="note-content">{{ note.content | e }}</div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <p id="noNotesMessage" style="color: var(--text-secondary);">No notes yet. Add a note below.</p>
+            {% endif %}
+        </div>
+
+        <hr style="border-color: var(--border-color);">
+
+        <!-- Add note form -->
+        <form id="addNoteForm">
+            <div class="mb-3">
+                <label for="noteAuthor" class="form-label">Author</label>
+                <input type="text" id="noteAuthor" class="form-control" required
+                       placeholder="Your name">
+            </div>
+            <div class="mb-3">
+                <label for="noteContent" class="form-label">Note</label>
+                <textarea id="noteContent" class="form-control" rows="3" required
+                          placeholder="Add investigation notes, observations, or updates..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary" id="addNoteBtn">
+                <i class="bi bi-plus-lg me-1"></i>Add Note
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Link Analysis Modal -->
+<div class="modal fade" id="linkAnalysisModal" tabindex="-1" aria-labelledby="linkAnalysisModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content" style="background-color: var(--bg-secondary); color: var(--text-primary); border-color: var(--border-color);">
+            <div class="modal-header" style="border-bottom-color: var(--border-color);">
+                <h5 class="modal-title" id="linkAnalysisModalLabel">
+                    <i class="bi bi-link-45deg me-2"></i>Link Analysis to Case
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="linkAnalysisForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="linkAnalysisId" class="form-label">Analysis ID</label>
+                        <input type="text" id="linkAnalysisId" class="form-control" required
+                               placeholder="Enter the analysis ID to link">
+                        <div class="form-text" style="color: var(--text-secondary);">
+                            You can find analysis IDs in the History page.
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" style="border-top-color: var(--border-color);">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="linkAnalysisBtn">
+                        <i class="bi bi-link-45deg me-1"></i>Link Analysis
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        'use strict';
+
+        var caseId = {{ case.id | tojson }};
+
+        /* --------------------------------------------------
+           Status Update (capitalized values)
+        -------------------------------------------------- */
+        var statusSelect = document.getElementById('statusSelect');
+
+        if (statusSelect) {
+            statusSelect.addEventListener('change', function () {
+                var newStatus = statusSelect.value;
+
+                fetch('/api/cases/' + encodeURIComponent(caseId) + '/status', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                })
+                .then(function (response) {
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    return response.json();
+                })
+                .then(function () {
+                    var badge = document.getElementById('statusBadge');
+                    if (badge) {
+                        var classMap = {
+                            'Open': 'badge badge-primary',
+                            'Investigating': 'badge badge-warning',
+                            'Resolved': 'badge badge-success',
+                            'Closed': 'badge badge-info'
+                        };
+                        badge.textContent = newStatus;
+                        badge.className = classMap[newStatus] || 'badge badge-info';
+                        badge.id = 'statusBadge';
+                    }
+                    if (window.BTADashboard && window.BTADashboard.showToast) {
+                        window.BTADashboard.showToast('Status updated to ' + newStatus + '.', 'success');
+                    }
+                })
+                .catch(function (err) {
+                    console.error('[BTA Case] Status update failed:', err.message);
+                    if (window.BTADashboard && window.BTADashboard.showToast) {
+                        window.BTADashboard.showToast('Failed to update status: ' + err.message, 'error');
+                    }
+                });
+            });
+        }
+
+        /* --------------------------------------------------
+           Add Note (JSON POST)
+        -------------------------------------------------- */
+        var noteForm = document.getElementById('addNoteForm');
+
+        if (noteForm) {
+            noteForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+
+                var authorInput = document.getElementById('noteAuthor');
+                var contentInput = document.getElementById('noteContent');
+                var author = authorInput.value.trim();
+                var content = contentInput.value.trim();
+
+                if (!author || !content) return;
+
+                var addNoteBtn = document.getElementById('addNoteBtn');
+                if (addNoteBtn) addNoteBtn.disabled = true;
+
+                fetch('/api/cases/' + encodeURIComponent(caseId) + '/notes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ author: author, content: content })
+                })
+                .then(function (response) {
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    return response.json();
+                })
+                .then(function (data) {
+                    if (addNoteBtn) addNoteBtn.disabled = false;
+
+                    var noMsg = document.getElementById('noNotesMessage');
+                    if (noMsg) noMsg.remove();
+
+                    var container = document.getElementById('notesContainer');
+                    if (container) {
+                        var card = document.createElement('div');
+                        card.className = 'note-card';
+
+                        var meta = document.createElement('div');
+                        meta.className = 'note-meta';
+
+                        var personIcon = document.createElement('i');
+                        personIcon.className = 'bi bi-person me-1';
+                        meta.appendChild(personIcon);
+
+                        var authorStrong = document.createElement('strong');
+                        authorStrong.textContent = author;
+                        meta.appendChild(authorStrong);
+
+                        var timeSpan = document.createElement('span');
+                        timeSpan.className = 'ms-2';
+                        var clockIcon = document.createElement('i');
+                        clockIcon.className = 'bi bi-clock me-1';
+                        timeSpan.appendChild(clockIcon);
+                        timeSpan.appendChild(document.createTextNode(data.created_at || 'Just now'));
+                        meta.appendChild(timeSpan);
+
+                        card.appendChild(meta);
+
+                        var body = document.createElement('div');
+                        body.className = 'note-content';
+                        body.textContent = content;
+                        card.appendChild(body);
+
+                        container.appendChild(card);
+                    }
+
+                    contentInput.value = '';
+
+                    if (window.BTADashboard && window.BTADashboard.showToast) {
+                        window.BTADashboard.showToast('Note added.', 'success');
+                    }
+                })
+                .catch(function (err) {
+                    if (addNoteBtn) addNoteBtn.disabled = false;
+                    console.error('[BTA Case] Add note failed:', err.message);
+                    if (window.BTADashboard && window.BTADashboard.showToast) {
+                        window.BTADashboard.showToast('Failed to add note: ' + err.message, 'error');
+                    }
+                });
+            });
+        }
+
+        /* --------------------------------------------------
+           Link Analysis
+        -------------------------------------------------- */
+        var linkForm = document.getElementById('linkAnalysisForm');
+
+        if (linkForm) {
+            linkForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+
+                var analysisIdInput = document.getElementById('linkAnalysisId');
+                var analysisId = analysisIdInput.value.trim();
+                if (!analysisId) return;
+
+                var linkBtn = document.getElementById('linkAnalysisBtn');
+                if (linkBtn) linkBtn.disabled = true;
+
+                fetch('/api/cases/' + encodeURIComponent(caseId) + '/analyses?analysis_id=' + encodeURIComponent(analysisId), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(function (response) {
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    return response.json();
+                })
+                .then(function (data) {
+                    if (linkBtn) linkBtn.disabled = false;
+
+                    var noRow = document.getElementById('noAnalysesRow');
+                    if (noRow) noRow.remove();
+
+                    var tbody = document.getElementById('analysesTableBody');
+                    if (tbody) {
+                        var tr = document.createElement('tr');
+
+                        var tdId = document.createElement('td');
+                        var link = document.createElement('a');
+                        link.href = '/report/' + encodeURIComponent(analysisId);
+                        link.style.cssText = 'color: var(--color-primary); text-decoration: none;';
+                        var code = document.createElement('code');
+                        code.textContent = analysisId;
+                        link.appendChild(code);
+                        tdId.appendChild(link);
+                        tr.appendChild(tdId);
+
+                        var tdLinked = document.createElement('td');
+                        tdLinked.textContent = data.linked_at || 'Just now';
+                        tr.appendChild(tdLinked);
+
+                        var tdActions = document.createElement('td');
+                        var viewBtn = document.createElement('a');
+                        viewBtn.href = '/report/' + encodeURIComponent(analysisId);
+                        viewBtn.className = 'btn btn-sm btn-outline-primary';
+                        viewBtn.title = 'View Report';
+                        var eyeIcon = document.createElement('i');
+                        eyeIcon.className = 'bi bi-eye';
+                        viewBtn.appendChild(eyeIcon);
+                        tdActions.appendChild(viewBtn);
+                        tr.appendChild(tdActions);
+
+                        tbody.appendChild(tr);
+                    }
+
+                    analysisIdInput.value = '';
+                    var modal = bootstrap.Modal.getInstance(document.getElementById('linkAnalysisModal'));
+                    if (modal) modal.hide();
+
+                    if (window.BTADashboard && window.BTADashboard.showToast) {
+                        window.BTADashboard.showToast('Analysis linked successfully.', 'success');
+                    }
+                })
+                .catch(function (err) {
+                    if (linkBtn) linkBtn.disabled = false;
+                    console.error('[BTA Case] Link analysis failed:', err.message);
+                    if (window.BTADashboard && window.BTADashboard.showToast) {
+                        window.BTADashboard.showToast('Failed to link analysis: ' + err.message, 'error');
+                    }
+                });
+            });
+        }
+    })();
+</script>
+{% endblock %}

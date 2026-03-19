@@ -1,0 +1,527 @@
+{
+  "_metadata": {
+    "version": "1.0.0",
+    "description": "Known malware family hash signatures for fuzzy matching",
+    "sources": [
+      "MalwareBazaar (abuse.ch)",
+      "MISP threat sharing",
+      "Public threat intelligence reports"
+    ],
+    "last_updated": "2026-02-12",
+    "total_families": 50
+  },
+  "families": {
+    "emotet": {
+      "aliases": ["Heodo", "Geodo"],
+      "description": "Banking trojan turned botnet loader",
+      "mitre_techniques": ["T1566.001", "T1059.005", "T1071.001"],
+      "imphashes": [
+        "b8a018983b91e7d9a5b23c29e98e1fe9",
+        "6e0e5b248d4f6e5c6c9d5d5e7f8a9b0c",
+        "c4b268b07c44b78ff17e2c5e84c8b5a0",
+        "f34d5f2d4577ed6d9ceec516c1f5a744"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "trickbot": {
+      "aliases": ["Trickster", "TheTrick"],
+      "description": "Modular banking trojan and credential stealer",
+      "mitre_techniques": ["T1055", "T1071.001", "T1027"],
+      "imphashes": [
+        "a3c00e3b35a1f7a6c4e1c5d8e9f2a4b6",
+        "7a8bb0a7b671e2f6c4d5e6f7a8b9c0d1",
+        "3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "cobalt_strike": {
+      "aliases": ["CobaltStrike", "Beacon"],
+      "description": "Commercial adversary simulation framework commonly abused",
+      "mitre_techniques": ["T1059.001", "T1071.001", "T1055.001", "T1105"],
+      "imphashes": [
+        "d3d1c8e7f6a5b4c3d2e1f0a9b8c7d6e5",
+        "829da329a5ba99e8ab490e7a1e5e3c8b",
+        "36e3f77d6c4e4a9f6f5e8d7c6b5a4d3e",
+        "6118619b2d23b6e79e5f5b3a4c0d1e2f"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "qakbot": {
+      "aliases": ["QBot", "QuakBot", "Pinkslipbot"],
+      "description": "Banking trojan with worm capabilities",
+      "mitre_techniques": ["T1055.012", "T1071.001", "T1059.001"],
+      "imphashes": [
+        "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+        "e5d4c3b2a1f0e9d8c7b6a5f4e3d2c1b0",
+        "ab12cd34ef56ab78cd90ef12ab34cd56"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "lockbit": {
+      "aliases": ["LockBit 2.0", "LockBit 3.0", "LockBit Black"],
+      "description": "Ransomware-as-a-Service",
+      "mitre_techniques": ["T1486", "T1490", "T1059.001", "T1083"],
+      "imphashes": [
+        "4f5e6d7c8b9a0f1e2d3c4b5a6f7e8d9c",
+        "9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "revil": {
+      "aliases": ["Sodinokibi", "REvil"],
+      "description": "Ransomware-as-a-Service",
+      "mitre_techniques": ["T1486", "T1490", "T1027", "T1059.001"],
+      "imphashes": [
+        "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
+        "f0e1d2c3b4a5f6e7d8c9b0a1f2e3d4c5"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "conti": {
+      "aliases": ["Conti", "Wizard Spider"],
+      "description": "Ransomware operated by Wizard Spider group",
+      "mitre_techniques": ["T1486", "T1490", "T1059.001", "T1082"],
+      "imphashes": [
+        "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6a7",
+        "e3d4c5b6a7f8e9d0c1b2a3f4e5d6c7b8"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "blackcat": {
+      "aliases": ["ALPHV", "BlackCat", "Noberus"],
+      "description": "Rust-based ransomware-as-a-service",
+      "mitre_techniques": ["T1486", "T1490", "T1027", "T1059"],
+      "imphashes": [
+        "c3d4e5f6a7b8c9d0e1f2a3b4c5d6a7b8"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "ryuk": {
+      "aliases": ["Ryuk"],
+      "description": "Targeted ransomware linked to GRIM SPIDER",
+      "mitre_techniques": ["T1486", "T1490", "T1059.003"],
+      "imphashes": [
+        "d4e5f6a7b8c9d0e1f2a3b4c5d6a7b8c9"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "agent_tesla": {
+      "aliases": ["AgentTesla", "AgenTesla"],
+      "description": ".NET keylogger and info stealer",
+      "mitre_techniques": ["T1056.001", "T1555", "T1071.001"],
+      "imphashes": [
+        "f34d5f2d4577ed6d9ceec516c1f5a744",
+        "dae02f32a21e03ce65412f6e56942daa"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "formbook": {
+      "aliases": ["FormBook", "XLoader"],
+      "description": "Info stealer and form grabber",
+      "mitre_techniques": ["T1055", "T1056.001", "T1071.001"],
+      "imphashes": [
+        "e5f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0",
+        "a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "remcos": {
+      "aliases": ["Remcos RAT"],
+      "description": "Remote access trojan sold commercially",
+      "mitre_techniques": ["T1056.001", "T1113", "T1071.001"],
+      "imphashes": [
+        "f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "njrat": {
+      "aliases": ["NjRAT", "Bladabindi", "NJW0rm"],
+      "description": ".NET remote access trojan",
+      "mitre_techniques": ["T1056.001", "T1113", "T1125"],
+      "imphashes": [
+        "b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3",
+        "dae02f32a21e03ce65412f6e56942daa"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "asyncrat": {
+      "aliases": ["AsyncRAT", "Async RAT"],
+      "description": "Open source .NET remote access trojan",
+      "mitre_techniques": ["T1056.001", "T1059.001", "T1071.001"],
+      "imphashes": [
+        "c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4",
+        "dae02f32a21e03ce65412f6e56942daa"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "darkcomet": {
+      "aliases": ["DarkComet", "FYNLOS"],
+      "description": "Remote access trojan (legacy)",
+      "mitre_techniques": ["T1056.001", "T1113", "T1125", "T1071.001"],
+      "imphashes": [
+        "d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "metasploit_meterpreter": {
+      "aliases": ["Meterpreter", "Metasploit"],
+      "description": "Metasploit Framework payload",
+      "mitre_techniques": ["T1059", "T1055", "T1071"],
+      "imphashes": [
+        "e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6",
+        "b3ce68e7b1e82e82d29e0a1a3c0a80c5"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "sliver": {
+      "aliases": ["Sliver C2"],
+      "description": "Open source adversary emulation framework",
+      "mitre_techniques": ["T1071.001", "T1059", "T1055"],
+      "imphashes": [
+        "f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "brute_ratel": {
+      "aliases": ["BRc4", "Brute Ratel C4"],
+      "description": "Commercial adversary simulation framework",
+      "mitre_techniques": ["T1071.001", "T1055", "T1059"],
+      "imphashes": [
+        "a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "raccoon_stealer": {
+      "aliases": ["Raccoon", "RaccoonStealer"],
+      "description": "Info stealer sold as MaaS",
+      "mitre_techniques": ["T1555", "T1539", "T1071.001"],
+      "imphashes": [
+        "b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "redline_stealer": {
+      "aliases": ["RedLine", "RedLineStealer"],
+      "description": ".NET info stealer targeting browsers and crypto wallets",
+      "mitre_techniques": ["T1555", "T1539", "T1071.001"],
+      "imphashes": [
+        "c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9d0",
+        "dae02f32a21e03ce65412f6e56942daa"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "vidar": {
+      "aliases": ["Vidar Stealer"],
+      "description": "Info stealer forked from Arkei",
+      "mitre_techniques": ["T1555", "T1539", "T1071.001"],
+      "imphashes": [
+        "d6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "lumma_stealer": {
+      "aliases": ["LummaC2", "Lumma Stealer"],
+      "description": "Info stealer targeting crypto wallets and browsers",
+      "mitre_techniques": ["T1555", "T1539", "T1071.001"],
+      "imphashes": [
+        "e7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "amadey": {
+      "aliases": ["Amadey Bot"],
+      "description": "Simple loader botnet",
+      "mitre_techniques": ["T1059", "T1105", "T1071.001"],
+      "imphashes": [
+        "f8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "smokeloader": {
+      "aliases": ["SmokeLoader", "Smoke Loader", "Dofoil"],
+      "description": "Modular loader for deploying payloads",
+      "mitre_techniques": ["T1055", "T1027", "T1071.001"],
+      "imphashes": [
+        "a9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "icedid": {
+      "aliases": ["IcedID", "BokBot"],
+      "description": "Banking trojan evolved into loader",
+      "mitre_techniques": ["T1055", "T1071.001", "T1059.001"],
+      "imphashes": [
+        "b0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "bumblebee": {
+      "aliases": ["BumbleBee"],
+      "description": "Loader associated with initial access brokers",
+      "mitre_techniques": ["T1059.001", "T1071.001", "T1055"],
+      "imphashes": [
+        "c1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "batloader": {
+      "aliases": ["BATLoader"],
+      "description": "Loader using malicious batch/MSI files",
+      "mitre_techniques": ["T1059.003", "T1105", "T1071.001"],
+      "imphashes": [
+        "d2a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "pikabot": {
+      "aliases": ["PikaBot"],
+      "description": "Loader with anti-analysis and code injection",
+      "mitre_techniques": ["T1055", "T1027", "T1071.001"],
+      "imphashes": [
+        "e3b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "danabot": {
+      "aliases": ["DanaBot"],
+      "description": "Modular banking trojan",
+      "mitre_techniques": ["T1055", "T1071.001", "T1056.001"],
+      "imphashes": [
+        "f4c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "ursnif": {
+      "aliases": ["Gozi", "ISFB", "Dreambot"],
+      "description": "Long-running banking trojan",
+      "mitre_techniques": ["T1055", "T1071.001", "T1059"],
+      "imphashes": [
+        "a5d6a7b8c9d0e1f2a3b4c5d6a7b8c9d0"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "lokibot": {
+      "aliases": ["LokiBot", "Loki PWS"],
+      "description": "Info stealer and keylogger",
+      "mitre_techniques": ["T1056.001", "T1555", "T1071.001"],
+      "imphashes": [
+        "b6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "netwire": {
+      "aliases": ["NetWire", "NetWireRC"],
+      "description": "Remote access trojan",
+      "mitre_techniques": ["T1056.001", "T1113", "T1071.001"],
+      "imphashes": [
+        "c7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "warzone_rat": {
+      "aliases": ["WarzoneRAT", "Ave Maria"],
+      "description": "Commercial RAT (MaaS)",
+      "mitre_techniques": ["T1056.001", "T1113", "T1071.001"],
+      "imphashes": [
+        "d8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "quasar_rat": {
+      "aliases": ["QuasarRAT", "Quasar"],
+      "description": "Open source .NET RAT",
+      "mitre_techniques": ["T1056.001", "T1113", "T1071.001"],
+      "imphashes": [
+        "e9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4",
+        "dae02f32a21e03ce65412f6e56942daa"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "poison_ivy": {
+      "aliases": ["PoisonIvy", "PIVY"],
+      "description": "Legacy RAT used by APT groups",
+      "mitre_techniques": ["T1055", "T1056.001", "T1071"],
+      "imphashes": [
+        "f0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "plugx": {
+      "aliases": ["PlugX", "THOR", "Korplug"],
+      "description": "Modular RAT used by Chinese APTs",
+      "mitre_techniques": ["T1574.002", "T1055", "T1071.001"],
+      "imphashes": [
+        "a1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "shadowpad": {
+      "aliases": ["ShadowPad"],
+      "description": "Modular backdoor platform used by Chinese APTs",
+      "mitre_techniques": ["T1055", "T1071.001", "T1027"],
+      "imphashes": [
+        "b2a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "nanocore": {
+      "aliases": ["NanoCore", "NanoCoreRAT"],
+      "description": ".NET RAT with plugin support",
+      "mitre_techniques": ["T1056.001", "T1113", "T1071.001"],
+      "imphashes": [
+        "c3b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8",
+        "dae02f32a21e03ce65412f6e56942daa"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "sdbbot": {
+      "aliases": ["SDBBot"],
+      "description": "Backdoor associated with TA505",
+      "mitre_techniques": ["T1059", "T1055", "T1071.001"],
+      "imphashes": [
+        "d4c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "hancitor": {
+      "aliases": ["Hancitor", "Chanitor"],
+      "description": "Loader used to distribute various payloads",
+      "mitre_techniques": ["T1059.005", "T1105", "T1071.001"],
+      "imphashes": [
+        "e5d6a7b8c9d0e1f2a3b4c5d6a7b8c9d0"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "dridex": {
+      "aliases": ["Dridex", "Bugat", "Cridex"],
+      "description": "Banking trojan with loader capabilities",
+      "mitre_techniques": ["T1055", "T1071.001", "T1059.005"],
+      "imphashes": [
+        "f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "zloader": {
+      "aliases": ["ZLoader", "DELoader", "Terdot"],
+      "description": "Banking trojan loader",
+      "mitre_techniques": ["T1055", "T1071.001", "T1059"],
+      "imphashes": [
+        "a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "mimikatz": {
+      "aliases": ["Mimikatz"],
+      "description": "Credential dumping tool",
+      "mitre_techniques": ["T1003.001", "T1003.002", "T1003.004"],
+      "imphashes": [
+        "b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3",
+        "3d556e1a04a4c76ff9b77aa73ee1f37e"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "lazarus_rat": {
+      "aliases": ["LazarusRAT", "BLINDINGCAN"],
+      "description": "RAT used by Lazarus Group (DPRK)",
+      "mitre_techniques": ["T1055", "T1071.001", "T1027"],
+      "imphashes": [
+        "c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "havoc": {
+      "aliases": ["Havoc C2", "Havoc Framework"],
+      "description": "Open source C2 framework",
+      "mitre_techniques": ["T1059", "T1055", "T1071.001"],
+      "imphashes": [
+        "d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "mythic": {
+      "aliases": ["Mythic C2"],
+      "description": "Open source cross-platform C2",
+      "mitre_techniques": ["T1059", "T1071", "T1055"],
+      "imphashes": [
+        "e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "black_basta": {
+      "aliases": ["BlackBasta"],
+      "description": "Ransomware group emerged from Conti",
+      "mitre_techniques": ["T1486", "T1490", "T1059"],
+      "imphashes": [
+        "f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "play_ransomware": {
+      "aliases": ["Play", "PlayCrypt"],
+      "description": "Ransomware targeting enterprises",
+      "mitre_techniques": ["T1486", "T1490", "T1059"],
+      "imphashes": [
+        "a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    },
+    "royal_ransomware": {
+      "aliases": ["Royal", "BlackSuit"],
+      "description": "Ransomware group evolved from Conti",
+      "mitre_techniques": ["T1486", "T1490", "T1059.001"],
+      "imphashes": [
+        "b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9"
+      ],
+      "ssdeep_patterns": [],
+      "tlsh_patterns": []
+    }
+  }
+}

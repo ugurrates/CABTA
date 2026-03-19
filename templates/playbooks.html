@@ -1,0 +1,1420 @@
+{# Author: Ugur Ates #}
+{# Playbooks - Playbook management and execution #}
+{% extends "base.html" %}
+
+{% block title %}Playbooks - Blue Team Assistant{% endblock %}
+{% block page_title %}Playbooks{% endblock %}
+{% block page_subtitle %}<span class="page-subtitle">Security Automation Playbooks</span>{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* ── Base card styles ── */
+    .playbook-card {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 1.25rem;
+        transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        overflow: hidden;
+    }
+    .playbook-card:hover {
+        border-color: var(--color-accent);
+        box-shadow: var(--shadow-sm);
+        transform: translateY(-3px) scale(1.01);
+    }
+    .playbook-card .pb-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+    }
+    .playbook-card .pb-desc {
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+        flex: 1;
+        margin-bottom: 0.75rem;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .playbook-card .pb-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.75rem;
+    }
+    .playbook-card .pb-footer-meta {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.75rem;
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+    }
+    .playbook-card .pb-footer-meta i {
+        font-size: 0.7rem;
+        opacity: 0.7;
+    }
+
+    /* ── Trigger badges ── */
+    .trigger-badge {
+        font-size: 0.7rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .trigger-manual { background: rgba(88,166,255,0.15); color: var(--color-accent); }
+    .trigger-alert { background: rgba(239,68,68,0.15); color: var(--color-danger); }
+    .trigger-auto { background: rgba(239,68,68,0.15); color: var(--color-danger); }
+    .trigger-scheduled { background: rgba(245,158,11,0.15); color: var(--color-warning); }
+    .trigger-webhook { background: rgba(34,197,94,0.15); color: var(--color-success); }
+
+    /* ── Category badges ── */
+    .category-badge {
+        font-size: 0.65rem;
+        padding: 0.15rem 0.45rem;
+        border-radius: 4px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .cat-threat-intel { background: rgba(139,92,246,0.15); color: #a78bfa; }
+    .cat-incident-response { background: rgba(239,68,68,0.15); color: #f87171; }
+    .cat-malware-analysis { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .cat-phishing { background: rgba(6,182,212,0.15); color: #22d3ee; }
+    .cat-forensics { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .cat-general { background: rgba(148,163,184,0.15); color: #94a3b8; }
+
+    /* ── Stats bar ── */
+    .playbook-stats-bar {
+        display: flex;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+        padding: 0.75rem 1rem;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    .stat-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .stat-item .stat-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.85rem;
+    }
+    .stat-item .stat-icon.si-playbooks { background: rgba(88,166,255,0.15); color: var(--color-accent); }
+    .stat-item .stat-icon.si-steps { background: rgba(139,92,246,0.15); color: #a78bfa; }
+    .stat-item .stat-icon.si-tools { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .stat-item .stat-icon.si-categories { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .stat-item .stat-value {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--text-primary);
+        line-height: 1;
+    }
+    .stat-item .stat-label {
+        font-size: 0.7rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+        line-height: 1;
+    }
+
+    /* ── Search and filter bar ── */
+    .playbook-toolbar {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    .playbook-search-wrap {
+        position: relative;
+        flex: 1;
+        min-width: 220px;
+        max-width: 360px;
+    }
+    .playbook-search-wrap i {
+        position: absolute;
+        left: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+    }
+    .playbook-search-wrap input {
+        padding-left: 2.25rem;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        color: var(--text-primary);
+        border-radius: 6px;
+        font-size: 0.85rem;
+        height: 36px;
+    }
+    .playbook-search-wrap input::placeholder { color: var(--text-secondary); opacity: 0.7; }
+    .playbook-search-wrap input:focus {
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 2px rgba(88,166,255,0.15);
+        outline: none;
+    }
+    .filter-btn-group {
+        display: flex;
+        gap: 0.25rem;
+        flex-wrap: wrap;
+    }
+    .filter-btn {
+        font-size: 0.72rem;
+        padding: 0.3rem 0.6rem;
+        border-radius: 5px;
+        border: 1px solid var(--border-color);
+        background: transparent;
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+    }
+    .filter-btn:hover {
+        border-color: var(--color-accent);
+        color: var(--text-primary);
+    }
+    .filter-btn.active {
+        background: rgba(88,166,255,0.15);
+        border-color: var(--color-accent);
+        color: var(--color-accent);
+        font-weight: 600;
+    }
+
+    /* ── Flowchart-like step display ── */
+    .playbook-steps {
+        position: relative;
+        padding-left: 2rem;
+    }
+    .playbook-steps::before {
+        content: '';
+        position: absolute;
+        left: 0.75rem;
+        top: 0;
+        bottom: 0;
+        width: 2px;
+        background: linear-gradient(180deg, var(--color-accent), var(--border-color));
+    }
+    .playbook-step {
+        position: relative;
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.5rem;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        transition: border-color 0.15s;
+    }
+    .playbook-step:hover {
+        border-color: var(--color-accent);
+    }
+    .playbook-step::before {
+        content: '';
+        position: absolute;
+        left: -1.65rem;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--color-accent);
+        border: 2px solid var(--bg-secondary);
+    }
+    .playbook-step.step-condition::before {
+        background: #fbbf24;
+        border-radius: 2px;
+        transform: translateY(-50%) rotate(45deg);
+    }
+    .playbook-step.step-loop::before {
+        background: #a78bfa;
+        border-radius: 2px;
+    }
+    .playbook-step.step-condition {
+        border-left: 3px solid #fbbf24;
+    }
+    .playbook-step.step-loop {
+        border-left: 3px solid #a78bfa;
+    }
+    .playbook-step .step-num {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--color-accent);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .playbook-step .step-name {
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+    .playbook-step .step-tool {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+    .step-indicator-badge {
+        font-size: 0.6rem;
+        padding: 0.1rem 0.35rem;
+        border-radius: 3px;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-left: 0.4rem;
+    }
+    .step-indicator-condition {
+        background: rgba(251,191,36,0.15);
+        color: #fbbf24;
+    }
+    .step-indicator-loop {
+        background: rgba(167,139,250,0.15);
+        color: #a78bfa;
+    }
+
+    /* ── View modal enhancements ── */
+    .view-modal-banner {
+        padding: 1rem 1.25rem;
+        border-radius: 6px;
+        margin-bottom: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .view-modal-banner .banner-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.25rem;
+        background: rgba(255,255,255,0.12);
+    }
+    .view-modal-banner.banner-threat-intel { background: rgba(139,92,246,0.12); }
+    .view-modal-banner.banner-incident-response { background: rgba(239,68,68,0.12); }
+    .view-modal-banner.banner-malware-analysis { background: rgba(245,158,11,0.12); }
+    .view-modal-banner.banner-phishing { background: rgba(6,182,212,0.12); }
+    .view-modal-banner.banner-forensics { background: rgba(34,197,94,0.12); }
+    .view-modal-banner.banner-general { background: rgba(148,163,184,0.12); }
+
+    .input-params-section {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 0.75rem 1rem;
+        margin-bottom: 1rem;
+    }
+    .input-params-section .param-item {
+        display: flex;
+        align-items: baseline;
+        gap: 0.5rem;
+        padding: 0.35rem 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .input-params-section .param-item:last-child { border-bottom: none; }
+    .param-name {
+        font-family: monospace;
+        font-size: 0.82rem;
+        color: var(--color-accent);
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .param-desc {
+        font-size: 0.78rem;
+        color: var(--text-secondary);
+    }
+    .param-required {
+        font-size: 0.6rem;
+        padding: 0.1rem 0.3rem;
+        border-radius: 3px;
+        background: rgba(239,68,68,0.15);
+        color: #f87171;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .tool-coverage-section {
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: 0.75rem 1rem;
+        margin-top: 1rem;
+    }
+    .tool-coverage-section .tool-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.75rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        background: rgba(88,166,255,0.1);
+        color: var(--color-accent);
+        margin: 0.15rem;
+        border: 1px solid rgba(88,166,255,0.2);
+    }
+
+    /* ── Run modal param fields ── */
+    .run-param-field {
+        margin-bottom: 0.75rem;
+    }
+    .run-param-field label {
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 0.2rem;
+    }
+    .run-param-field .form-text {
+        font-size: 0.72rem;
+    }
+    .run-param-field input,
+    .run-param-field textarea {
+        background: var(--bg-tertiary);
+        border-color: var(--border-color);
+        color: var(--text-primary);
+        font-size: 0.85rem;
+    }
+    .run-param-field input:focus,
+    .run-param-field textarea:focus {
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 2px rgba(88,166,255,0.15);
+    }
+    .run-param-field .is-invalid {
+        border-color: var(--color-danger) !important;
+    }
+
+    /* ── Duration estimate ── */
+    .duration-estimate {
+        font-size: 0.72rem;
+        color: var(--text-secondary);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+
+    /* ── Last run info ── */
+    .last-run-info {
+        font-size: 0.68rem;
+        color: var(--text-secondary);
+        opacity: 0.8;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <p class="mb-0" style="color: var(--text-secondary);">
+        Pre-configured investigation workflows that automate common security operations.
+    </p>
+    <button class="btn btn-accent btn-sm" onclick="Playbooks.loadPlaybooks()">
+        <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+    </button>
+</div>
+
+<!-- Stats Bar -->
+<div class="playbook-stats-bar" id="playbookStatsBar">
+    <div class="stat-item">
+        <div class="stat-icon si-playbooks"><i class="bi bi-journal-code"></i></div>
+        <div>
+            <div class="stat-value" id="statTotalPlaybooks">0</div>
+            <div class="stat-label">Playbooks</div>
+        </div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-icon si-steps"><i class="bi bi-list-check"></i></div>
+        <div>
+            <div class="stat-value" id="statTotalSteps">0</div>
+            <div class="stat-label">Total Steps</div>
+        </div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-icon si-tools"><i class="bi bi-wrench-adjustable"></i></div>
+        <div>
+            <div class="stat-value" id="statUniqueTools">0</div>
+            <div class="stat-label">Unique Tools</div>
+        </div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-icon si-categories"><i class="bi bi-tags"></i></div>
+        <div>
+            <div class="stat-value" id="statCategories">0</div>
+            <div class="stat-label">Categories</div>
+        </div>
+    </div>
+</div>
+
+<!-- Search & Filter Toolbar -->
+<div class="playbook-toolbar">
+    <div class="playbook-search-wrap">
+        <i class="bi bi-search"></i>
+        <input type="text" class="form-control" id="playbookSearchInput" placeholder="Search playbooks by name or description...">
+    </div>
+    <div class="filter-btn-group" id="categoryFilters">
+        <button class="filter-btn active" data-category="all"><i class="bi bi-grid-3x3-gap me-1"></i>All</button>
+        <button class="filter-btn" data-category="threat-intel"><i class="bi bi-shield-exclamation me-1"></i>Threat Intel</button>
+        <button class="filter-btn" data-category="incident-response"><i class="bi bi-exclamation-triangle me-1"></i>Incident Response</button>
+        <button class="filter-btn" data-category="malware-analysis"><i class="bi bi-bug me-1"></i>Malware Analysis</button>
+        <button class="filter-btn" data-category="phishing"><i class="bi bi-envelope-exclamation me-1"></i>Phishing</button>
+        <button class="filter-btn" data-category="forensics"><i class="bi bi-fingerprint me-1"></i>Forensics</button>
+    </div>
+</div>
+
+<!-- Playbook Cards -->
+<div class="row g-3" id="playbookGrid">
+    {% if playbooks %}
+        {% for pb in playbooks %}
+        <div class="col-xl-4 col-md-6 playbook-col"
+             data-pb-name="{{ pb.name | default('') | e }}"
+             data-pb-desc="{{ pb.description | default('') | e }}">
+            <div class="playbook-card">
+                <div class="pb-title">
+                    <i class="bi bi-journal-code me-2 text-accent"></i>{{ pb.name | default('Unnamed') | e }}
+                </div>
+                <div class="pb-desc">{{ pb.description | default('No description available.') | e }}</div>
+                <div class="pb-meta">
+                    {% set tt = (pb.trigger_type | default('manual')) | lower %}
+                    <span class="trigger-badge trigger-{{ tt }}">{{ tt }}</span>
+                    <small class="text-muted">{{ pb.step_count | default((pb.steps | default([])) | length) }} steps</small>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary btn-sm flex-grow-1 playbook-view-btn"
+                            title="View Details"
+                            data-playbook-id="{{ pb.id | default(pb.name | default('')) | e }}">
+                        <i class="bi bi-eye me-1"></i>View
+                    </button>
+                    <button class="btn btn-accent btn-sm flex-grow-1 playbook-run-btn"
+                            data-playbook-id="{{ pb.id | default(pb.name | default('')) | e }}"
+                            data-playbook-name="{{ pb.name | default('') | e }}">
+                        <i class="bi bi-play-fill me-1"></i>Run
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body text-center py-5 text-muted">
+                    <i class="bi bi-journal-x fs-1 d-block mb-2 opacity-50"></i>
+                    No playbooks found. Add YAML playbooks to the <code>data/playbooks/</code> directory.
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Run Playbook Modal -->
+<div class="modal fade" id="runPlaybookModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content" style="background-color: var(--bg-secondary); color: var(--text-primary); border-color: var(--border-color);">
+            <div class="modal-header" style="border-bottom-color: var(--border-color);">
+                <h5 class="modal-title" id="runPlaybookTitle">
+                    <i class="bi bi-play-circle me-2 text-accent"></i>Run Playbook
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3" id="runPlaybookDesc"></p>
+                <form id="runPlaybookForm">
+                    <input type="hidden" id="runPlaybookId">
+                    <!-- Dynamic param fields injected here -->
+                    <div id="runParamFieldsContainer"></div>
+                    <!-- Fallback raw JSON input -->
+                    <div class="mb-3" id="runParamsFallback">
+                        <label class="form-label">Input Parameters</label>
+                        <textarea id="playbookParams" class="form-control" rows="5"
+                                  placeholder='{"alert_text": "Suspicious login from 10.0.0.1"}'
+                                  style="background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-primary);font-family:monospace;font-size:0.85rem;"></textarea>
+                        <div class="form-text">Enter JSON parameters required by this playbook, or leave empty for defaults.</div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer" style="border-top-color: var(--border-color);">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-accent btn-sm" id="executePlaybookBtn">
+                    <i class="bi bi-play-fill me-1"></i>Execute
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Playbook Detail Modal -->
+<div class="modal fade" id="viewPlaybookModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="background-color: var(--bg-secondary); color: var(--text-primary); border-color: var(--border-color);">
+            <div class="modal-header" style="border-bottom-color: var(--border-color);">
+                <h5 class="modal-title" id="viewPlaybookTitle"><i class="bi bi-journal-code me-2 text-accent"></i>Playbook Details</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="viewPlaybookBody">
+                <div class="text-center py-4 text-muted">Loading...</div>
+            </div>
+            <div class="modal-footer" style="border-top-color: var(--border-color);" id="viewPlaybookFooter">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-accent btn-sm" id="viewModalRunBtn" style="display:none;">
+                    <i class="bi bi-play-fill me-1"></i>Run this Playbook
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showNotification(msg, type) {
+    if (window.BTADashboard && window.BTADashboard.showToast) {
+        window.BTADashboard.showToast(msg, type);
+    } else {
+        alert(msg);
+    }
+}
+
+var Playbooks = (function () {
+    'use strict';
+
+    /* ── Utility: safe text escaping ── */
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str));
+        return div.innerHTML;
+    }
+    function escapeAttr(str) {
+        return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    /* ── Category detection ── */
+    var CATEGORIES = {
+        'threat-intel':       { label: 'Threat Intel',       icon: 'bi-shield-exclamation', keywords: ['threat','intel','ioc','indicator','reputation','osint','cve','vulnerability','enrich'] },
+        'incident-response':  { label: 'Incident Response',  icon: 'bi-exclamation-triangle', keywords: ['incident','response','triage','alert','escalat','contain','remediat','isolat'] },
+        'malware-analysis':   { label: 'Malware Analysis',   icon: 'bi-bug', keywords: ['malware','virus','trojan','ransomware','sandbox','reverse','sample','binary','hash'] },
+        'phishing':           { label: 'Phishing',           icon: 'bi-envelope-exclamation', keywords: ['phish','email','spam','spoof','header','dmarc','spf','dkim','url'] },
+        'forensics':          { label: 'Forensics',          icon: 'bi-fingerprint', keywords: ['forensic','memory','disk','artifact','evidence','timeline','log','pcap','network forensic'] }
+    };
+
+    function detectCategory(name, description) {
+        var text = ((name || '') + ' ' + (description || '')).toLowerCase();
+        var bestCat = 'general';
+        var bestScore = 0;
+        for (var cat in CATEGORIES) {
+            var score = 0;
+            CATEGORIES[cat].keywords.forEach(function(kw) {
+                if (text.indexOf(kw) !== -1) score++;
+            });
+            if (score > bestScore) {
+                bestScore = score;
+                bestCat = cat;
+            }
+        }
+        return bestCat;
+    }
+
+    function getCategoryInfo(cat) {
+        if (CATEGORIES[cat]) return CATEGORIES[cat];
+        return { label: 'General', icon: 'bi-journal-code' };
+    }
+
+    /* ── Duration estimate (heuristic: ~30s per step) ── */
+    function estimateDuration(stepCount) {
+        if (!stepCount || stepCount <= 0) return '< 1 min';
+        var totalSec = stepCount * 30;
+        if (totalSec < 60) return '< 1 min';
+        var mins = Math.ceil(totalSec / 60);
+        return '~' + mins + ' min';
+    }
+
+    /* ── Last run from localStorage ── */
+    function getLastRun(playbookId) {
+        try {
+            var data = JSON.parse(localStorage.getItem('pb_lastrun') || '{}');
+            return data[playbookId] || null;
+        } catch (e) { return null; }
+    }
+    function setLastRun(playbookId) {
+        try {
+            var data = JSON.parse(localStorage.getItem('pb_lastrun') || '{}');
+            data[playbookId] = new Date().toISOString();
+            localStorage.setItem('pb_lastrun', JSON.stringify(data));
+        } catch (e) { /* ignore */ }
+    }
+    function formatLastRun(iso) {
+        if (!iso) return null;
+        try {
+            var d = new Date(iso);
+            var now = new Date();
+            var diff = now - d;
+            if (diff < 60000) return 'just now';
+            if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+            if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+            return d.toLocaleDateString();
+        } catch (e) { return null; }
+    }
+
+    /* ── Collect unique tools from steps ── */
+    function collectTools(steps) {
+        var tools = {};
+        (steps || []).forEach(function(s) {
+            var t = s.tool || s.type;
+            if (t) tools[t] = true;
+        });
+        return Object.keys(tools);
+    }
+
+    /* ── Tool icon mapping ── */
+    function getToolIcon(toolName) {
+        if (!toolName) return 'bi-wrench';
+        var t = toolName.toLowerCase();
+        if (t.indexOf('virus') !== -1 || t.indexOf('malware') !== -1 || t.indexOf('sandbox') !== -1) return 'bi-bug';
+        if (t.indexOf('email') !== -1 || t.indexOf('phish') !== -1) return 'bi-envelope';
+        if (t.indexOf('dns') !== -1 || t.indexOf('whois') !== -1 || t.indexOf('domain') !== -1) return 'bi-globe';
+        if (t.indexOf('ip') !== -1 || t.indexOf('geo') !== -1 || t.indexOf('network') !== -1) return 'bi-hdd-network';
+        if (t.indexOf('hash') !== -1 || t.indexOf('file') !== -1) return 'bi-file-earmark-binary';
+        if (t.indexOf('alert') !== -1 || t.indexOf('siem') !== -1) return 'bi-bell';
+        if (t.indexOf('report') !== -1 || t.indexOf('notify') !== -1) return 'bi-megaphone';
+        if (t.indexOf('block') !== -1 || t.indexOf('firewall') !== -1 || t.indexOf('isolat') !== -1) return 'bi-shield-x';
+        if (t.indexOf('enrich') !== -1 || t.indexOf('lookup') !== -1 || t.indexOf('search') !== -1) return 'bi-search';
+        if (t.indexOf('parse') !== -1 || t.indexOf('extract') !== -1) return 'bi-funnel';
+        return 'bi-wrench';
+    }
+
+    /* ── Stats update ── */
+    var allPlaybooksData = [];
+
+    function updateStats(playbooks) {
+        var totalSteps = 0;
+        var allTools = {};
+        var cats = {};
+        playbooks.forEach(function(pb) {
+            var steps = pb.steps || [];
+            var sc = steps.length || pb.step_count || 0;
+            totalSteps += sc;
+            steps.forEach(function(s) {
+                var t = s.tool || s.type;
+                if (t) allTools[t] = true;
+            });
+            var cat = detectCategory(pb.name, pb.description);
+            cats[cat] = true;
+        });
+        document.getElementById('statTotalPlaybooks').textContent = playbooks.length;
+        document.getElementById('statTotalSteps').textContent = totalSteps;
+        document.getElementById('statUniqueTools').textContent = Object.keys(allTools).length;
+        document.getElementById('statCategories').textContent = Object.keys(cats).length;
+    }
+
+    /* ── Search & filter state ── */
+    var currentFilter = 'all';
+    var currentSearch = '';
+
+    function applyFilters() {
+        var cols = document.querySelectorAll('#playbookGrid .playbook-col');
+        var searchLower = currentSearch.toLowerCase();
+        cols.forEach(function(col) {
+            var name = (col.getAttribute('data-pb-name') || '').toLowerCase();
+            var desc = (col.getAttribute('data-pb-desc') || '').toLowerCase();
+            var cat = col.getAttribute('data-pb-category') || 'general';
+
+            var matchSearch = !searchLower || name.indexOf(searchLower) !== -1 || desc.indexOf(searchLower) !== -1;
+            var matchCat = currentFilter === 'all' || cat === currentFilter;
+
+            col.style.display = (matchSearch && matchCat) ? '' : 'none';
+        });
+    }
+
+    /* ── Filter button clicks ── */
+    document.getElementById('categoryFilters').addEventListener('click', function(e) {
+        var btn = e.target.closest('.filter-btn');
+        if (!btn) return;
+        document.querySelectorAll('#categoryFilters .filter-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        currentFilter = btn.getAttribute('data-category');
+        applyFilters();
+    });
+
+    /* ── Search input ── */
+    document.getElementById('playbookSearchInput').addEventListener('input', function(e) {
+        currentSearch = e.target.value.trim();
+        applyFilters();
+    });
+
+    /* ── Build a single playbook card using safe DOM methods ── */
+    function buildCard(pb) {
+        var pbId = pb.id || pb.name || '';
+        var pbName = pb.name || 'Untitled';
+        var pbDesc = pb.description || 'No description.';
+        var steps = pb.steps || [];
+        var stepCount = steps.length || pb.step_count || 0;
+        var tt = (pb.trigger_type || pb.trigger || 'manual').toLowerCase();
+        var cat = detectCategory(pbName, pbDesc);
+        var catInfo = getCategoryInfo(cat);
+        var tools = collectTools(steps);
+        var lastRun = formatLastRun(getLastRun(pbId));
+
+        var col = document.createElement('div');
+        col.className = 'col-xl-4 col-md-6 playbook-col';
+        col.setAttribute('data-pb-name', pbName);
+        col.setAttribute('data-pb-desc', pbDesc);
+        col.setAttribute('data-pb-category', cat);
+
+        var card = document.createElement('div');
+        card.className = 'playbook-card';
+
+        // Title
+        var titleDiv = document.createElement('div');
+        titleDiv.className = 'pb-title';
+        var titleIcon = document.createElement('i');
+        titleIcon.className = 'bi ' + catInfo.icon + ' me-2 text-accent';
+        titleDiv.appendChild(titleIcon);
+        titleDiv.appendChild(document.createTextNode(pbName));
+        card.appendChild(titleDiv);
+
+        // Description
+        var descDiv = document.createElement('div');
+        descDiv.className = 'pb-desc';
+        descDiv.textContent = pbDesc;
+        card.appendChild(descDiv);
+
+        // Meta row
+        var meta = document.createElement('div');
+        meta.className = 'pb-meta';
+
+        var trigBadge = document.createElement('span');
+        trigBadge.className = 'trigger-badge trigger-' + tt;
+        trigBadge.textContent = tt;
+        meta.appendChild(trigBadge);
+
+        var catBadge = document.createElement('span');
+        catBadge.className = 'category-badge cat-' + cat;
+        catBadge.textContent = catInfo.label;
+        meta.appendChild(catBadge);
+
+        var stepLabel = document.createElement('small');
+        stepLabel.className = 'text-muted';
+        stepLabel.textContent = stepCount + ' steps';
+        meta.appendChild(stepLabel);
+
+        if (tools.length > 0) {
+            var toolLabel = document.createElement('small');
+            toolLabel.className = 'text-muted';
+            var toolLabelIcon = document.createElement('i');
+            toolLabelIcon.className = 'bi bi-wrench me-1';
+            toolLabel.appendChild(toolLabelIcon);
+            toolLabel.appendChild(document.createTextNode(tools.length + ' tools'));
+            meta.appendChild(toolLabel);
+        }
+
+        var durSpan = document.createElement('span');
+        durSpan.className = 'duration-estimate';
+        var durIcon = document.createElement('i');
+        durIcon.className = 'bi bi-clock me-1';
+        durSpan.appendChild(durIcon);
+        durSpan.appendChild(document.createTextNode(estimateDuration(stepCount)));
+        meta.appendChild(durSpan);
+
+        card.appendChild(meta);
+
+        // Last run
+        if (lastRun) {
+            var lrDiv = document.createElement('div');
+            lrDiv.className = 'last-run-info';
+            var lrIcon = document.createElement('i');
+            lrIcon.className = 'bi bi-arrow-repeat me-1';
+            lrDiv.appendChild(lrIcon);
+            lrDiv.appendChild(document.createTextNode('Last run: ' + lastRun));
+            card.appendChild(lrDiv);
+        }
+
+        // Action buttons
+        var actions = document.createElement('div');
+        actions.className = 'd-flex gap-2 mt-auto';
+
+        var viewBtn = document.createElement('button');
+        viewBtn.className = 'btn btn-outline-secondary btn-sm flex-grow-1 playbook-view-btn';
+        viewBtn.setAttribute('data-playbook-id', pbId);
+        var vIcon = document.createElement('i');
+        vIcon.className = 'bi bi-eye me-1';
+        viewBtn.appendChild(vIcon);
+        viewBtn.appendChild(document.createTextNode('View'));
+        actions.appendChild(viewBtn);
+
+        var runBtn = document.createElement('button');
+        runBtn.className = 'btn btn-accent btn-sm flex-grow-1 playbook-run-btn';
+        runBtn.setAttribute('data-playbook-id', pbId);
+        runBtn.setAttribute('data-playbook-name', pbName);
+        var rIcon = document.createElement('i');
+        rIcon.className = 'bi bi-play-fill me-1';
+        runBtn.appendChild(rIcon);
+        runBtn.appendChild(document.createTextNode('Run'));
+        actions.appendChild(runBtn);
+
+        card.appendChild(actions);
+        col.appendChild(card);
+        return col;
+    }
+
+    /* ── Event delegation for run/view buttons ── */
+    document.getElementById('playbookGrid').addEventListener('click', function (e) {
+        var runBtn = e.target.closest('.playbook-run-btn');
+        if (runBtn) {
+            var playbookId = runBtn.getAttribute('data-playbook-id');
+            var playbookName = runBtn.getAttribute('data-playbook-name');
+            openRunModal(playbookId, playbookName);
+            return;
+        }
+
+        var viewBtn = e.target.closest('.playbook-view-btn');
+        if (viewBtn) {
+            var id = viewBtn.getAttribute('data-playbook-id');
+            viewPlaybook(id);
+        }
+    });
+
+    /* ── Open run modal with auto-populated params ── */
+    function openRunModal(playbookId, playbookName) {
+        document.getElementById('runPlaybookId').value = playbookId;
+        document.getElementById('runPlaybookTitle').textContent = 'Run: ' + playbookName;
+        document.getElementById('runPlaybookDesc').textContent = '';
+        document.getElementById('playbookParams').value = '';
+        var container = document.getElementById('runParamFieldsContainer');
+        while (container.firstChild) container.removeChild(container.firstChild);
+        document.getElementById('runParamsFallback').style.display = '';
+
+        var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('runPlaybookModal'));
+        modal.show();
+
+        // Try to fetch playbook details to auto-populate param fields
+        fetch('/api/playbooks/' + encodeURIComponent(playbookId))
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (!data) return;
+            if (data.description) {
+                document.getElementById('runPlaybookDesc').textContent = data.description;
+            }
+            var inputParams = data.input_params || data.inputs || data.parameters || null;
+            if (inputParams && typeof inputParams === 'object') {
+                var keys = Object.keys(inputParams);
+                if (keys.length > 0) {
+                    document.getElementById('runParamsFallback').style.display = 'none';
+                    while (container.firstChild) container.removeChild(container.firstChild);
+
+                    keys.forEach(function(key) {
+                        var paramDef = inputParams[key];
+                        var isObj = paramDef && typeof paramDef === 'object';
+                        var desc = isObj ? (paramDef.description || '') : String(paramDef || '');
+                        var required = isObj ? (paramDef.required || false) : false;
+                        var defaultVal = isObj ? (paramDef.default || '') : '';
+
+                        var fieldDiv = document.createElement('div');
+                        fieldDiv.className = 'run-param-field';
+
+                        var label = document.createElement('label');
+                        label.className = 'form-label';
+                        label.textContent = key;
+                        if (required) {
+                            var reqSpan = document.createElement('span');
+                            reqSpan.className = 'text-danger ms-1';
+                            reqSpan.textContent = '*';
+                            label.appendChild(reqSpan);
+                        }
+                        fieldDiv.appendChild(label);
+
+                        var input = document.createElement('input');
+                        input.type = 'text';
+                        input.className = 'form-control form-control-sm';
+                        input.setAttribute('data-param-key', key);
+                        input.setAttribute('data-param-required', required ? 'true' : 'false');
+                        input.placeholder = defaultVal || key;
+                        if (defaultVal) input.value = defaultVal;
+                        fieldDiv.appendChild(input);
+
+                        if (desc) {
+                            var helpText = document.createElement('div');
+                            helpText.className = 'form-text';
+                            helpText.textContent = desc;
+                            fieldDiv.appendChild(helpText);
+                        }
+
+                        container.appendChild(fieldDiv);
+                    });
+                }
+            }
+        })
+        .catch(function() { /* fallback to raw JSON */ });
+    }
+
+    /* ── Execute playbook ── */
+    document.getElementById('executePlaybookBtn').addEventListener('click', function () {
+        var playbookId = document.getElementById('runPlaybookId').value;
+        var btn = document.getElementById('executePlaybookBtn');
+        var params = {};
+
+        // Collect from dynamic fields if present
+        var dynamicFields = document.querySelectorAll('#runParamFieldsContainer input[data-param-key]');
+        if (dynamicFields.length > 0) {
+            var valid = true;
+            dynamicFields.forEach(function(input) {
+                var key = input.getAttribute('data-param-key');
+                var required = input.getAttribute('data-param-required') === 'true';
+                var val = input.value.trim();
+                if (required && !val) {
+                    input.classList.add('is-invalid');
+                    valid = false;
+                } else {
+                    input.classList.remove('is-invalid');
+                }
+                if (val) params[key] = val;
+            });
+            if (!valid) {
+                showNotification('Please fill in all required parameters.', 'error');
+                return;
+            }
+        } else {
+            // Fallback to raw JSON
+            var paramsText = document.getElementById('playbookParams').value.trim();
+            if (paramsText) {
+                try {
+                    params = JSON.parse(paramsText);
+                } catch (e) {
+                    showNotification('Invalid JSON parameters', 'error');
+                    return;
+                }
+            }
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Starting...';
+
+        setLastRun(playbookId);
+
+        fetch('/api/playbooks/' + encodeURIComponent(playbookId) + '/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(params)
+        })
+        .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function (data) {
+            btn.disabled = false;
+            btn.textContent = 'Execute';
+            var modalEl = document.getElementById('runPlaybookModal');
+            var modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+
+            if (data.session_id) {
+                window.location.href = '/agent/chat?session=' + encodeURIComponent(data.session_id);
+            } else {
+                showNotification('Playbook started successfully.', 'success');
+            }
+        })
+        .catch(function (err) {
+            btn.disabled = false;
+            btn.textContent = 'Execute';
+            showNotification('Failed: ' + err.message, 'error');
+        });
+    });
+
+    /* ── View playbook detail with enhanced flowchart ── */
+    var currentViewPlaybookId = null;
+
+    function viewPlaybook(playbookId) {
+        currentViewPlaybookId = playbookId;
+        var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('viewPlaybookModal'));
+        var body = document.getElementById('viewPlaybookBody');
+        body.textContent = 'Loading...';
+        var runBtnFooter = document.getElementById('viewModalRunBtn');
+        runBtnFooter.style.display = 'none';
+        modal.show();
+
+        fetch('/api/playbooks/' + encodeURIComponent(playbookId))
+        .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function (data) {
+            while (body.firstChild) body.removeChild(body.firstChild);
+
+            var pbName = data.name || playbookId;
+            var pbDesc = data.description || 'No description.';
+            var cat = detectCategory(pbName, pbDesc);
+            var catInfo = getCategoryInfo(cat);
+
+            // Update modal title
+            var titleEl = document.getElementById('viewPlaybookTitle');
+            while (titleEl.firstChild) titleEl.removeChild(titleEl.firstChild);
+            var titleIcon = document.createElement('i');
+            titleIcon.className = 'bi ' + catInfo.icon + ' me-2 text-accent';
+            titleEl.appendChild(titleIcon);
+            titleEl.appendChild(document.createTextNode(pbName));
+
+            // Category banner
+            var banner = document.createElement('div');
+            banner.className = 'view-modal-banner banner-' + cat;
+            var bannerIconWrap = document.createElement('div');
+            bannerIconWrap.className = 'banner-icon';
+            var bannerIcon = document.createElement('i');
+            bannerIcon.className = 'bi ' + catInfo.icon;
+            bannerIconWrap.appendChild(bannerIcon);
+            banner.appendChild(bannerIconWrap);
+            var bannerText = document.createElement('div');
+            var bannerTitle = document.createElement('div');
+            bannerTitle.style.cssText = 'font-weight:600;color:var(--text-primary);';
+            bannerTitle.textContent = pbName;
+            bannerText.appendChild(bannerTitle);
+            var bannerSub = document.createElement('div');
+            bannerSub.style.cssText = 'font-size:0.82rem;color:var(--text-secondary);';
+            bannerSub.textContent = catInfo.label + ' Playbook';
+            bannerText.appendChild(bannerSub);
+            banner.appendChild(bannerText);
+            body.appendChild(banner);
+
+            // Description
+            var desc = document.createElement('p');
+            desc.className = 'text-muted';
+            desc.textContent = pbDesc;
+            body.appendChild(desc);
+
+            // Trigger & category meta
+            var metaDiv = document.createElement('div');
+            metaDiv.className = 'd-flex gap-3 mb-3 flex-wrap align-items-center';
+            var tt = (data.trigger_type || 'manual').toLowerCase();
+            var trigBadge = document.createElement('span');
+            trigBadge.className = 'trigger-badge trigger-' + tt;
+            trigBadge.textContent = 'Trigger: ' + tt;
+            metaDiv.appendChild(trigBadge);
+            var catBadge = document.createElement('span');
+            catBadge.className = 'category-badge cat-' + cat;
+            catBadge.textContent = catInfo.label;
+            metaDiv.appendChild(catBadge);
+            body.appendChild(metaDiv);
+
+            // Input parameters section
+            var inputParams = data.input_params || data.inputs || data.parameters || null;
+            if (inputParams && typeof inputParams === 'object' && Object.keys(inputParams).length > 0) {
+                var paramSection = document.createElement('div');
+                paramSection.className = 'input-params-section';
+                var paramTitle = document.createElement('h6');
+                paramTitle.className = 'mb-2';
+                var paramTitleIcon = document.createElement('i');
+                paramTitleIcon.className = 'bi bi-sliders me-1 text-accent';
+                paramTitle.appendChild(paramTitleIcon);
+                paramTitle.appendChild(document.createTextNode('Input Parameters'));
+                paramSection.appendChild(paramTitle);
+
+                Object.keys(inputParams).forEach(function(key) {
+                    var paramDef = inputParams[key];
+                    var isObj = paramDef && typeof paramDef === 'object';
+                    var paramDescText = isObj ? (paramDef.description || '') : String(paramDef || '');
+                    var required = isObj ? paramDef.required : false;
+
+                    var item = document.createElement('div');
+                    item.className = 'param-item';
+                    var nameSpan = document.createElement('span');
+                    nameSpan.className = 'param-name';
+                    nameSpan.textContent = key;
+                    item.appendChild(nameSpan);
+                    if (required) {
+                        var reqBadge = document.createElement('span');
+                        reqBadge.className = 'param-required';
+                        reqBadge.textContent = 'required';
+                        item.appendChild(reqBadge);
+                    }
+                    if (paramDescText) {
+                        var descSpan = document.createElement('span');
+                        descSpan.className = 'param-desc';
+                        descSpan.textContent = paramDescText;
+                        item.appendChild(descSpan);
+                    }
+                    paramSection.appendChild(item);
+                });
+                body.appendChild(paramSection);
+            }
+
+            // Steps flowchart
+            var steps = data.steps || [];
+            if (steps.length > 0) {
+                var stepsHeading = document.createElement('h6');
+                stepsHeading.className = 'mb-3';
+                var stepsHeadingIcon = document.createElement('i');
+                stepsHeadingIcon.className = 'bi bi-diagram-3 me-1 text-accent';
+                stepsHeading.appendChild(stepsHeadingIcon);
+                stepsHeading.appendChild(document.createTextNode('Steps (' + steps.length + ')'));
+                body.appendChild(stepsHeading);
+
+                var stepsContainer = document.createElement('div');
+                stepsContainer.className = 'playbook-steps';
+
+                steps.forEach(function (s, i) {
+                    var hasCondition = s.condition || s.when;
+                    var hasLoop = s.for_each || s.loop;
+
+                    var stepDiv = document.createElement('div');
+                    stepDiv.className = 'playbook-step';
+                    if (hasCondition) stepDiv.classList.add('step-condition');
+                    if (hasLoop) stepDiv.classList.add('step-loop');
+
+                    // Step number
+                    var numDiv = document.createElement('div');
+                    numDiv.className = 'step-num';
+                    numDiv.appendChild(document.createTextNode('Step ' + (i + 1)));
+                    if (hasCondition) {
+                        var condBadge = document.createElement('span');
+                        condBadge.className = 'step-indicator-badge step-indicator-condition';
+                        var condIcon = document.createElement('i');
+                        condIcon.className = 'bi bi-signpost-split me-1';
+                        condBadge.appendChild(condIcon);
+                        condBadge.appendChild(document.createTextNode('Condition'));
+                        numDiv.appendChild(condBadge);
+                    }
+                    if (hasLoop) {
+                        var loopBadge = document.createElement('span');
+                        loopBadge.className = 'step-indicator-badge step-indicator-loop';
+                        var loopIcon = document.createElement('i');
+                        loopIcon.className = 'bi bi-arrow-repeat me-1';
+                        loopBadge.appendChild(loopIcon);
+                        loopBadge.appendChild(document.createTextNode('Loop'));
+                        numDiv.appendChild(loopBadge);
+                    }
+                    stepDiv.appendChild(numDiv);
+
+                    // Step name
+                    var nameDiv = document.createElement('div');
+                    nameDiv.className = 'step-name';
+                    nameDiv.textContent = s.name || s.action || 'Step ' + (i + 1);
+                    stepDiv.appendChild(nameDiv);
+
+                    // Tool
+                    if (s.tool || s.type) {
+                        var toolDiv = document.createElement('div');
+                        toolDiv.className = 'step-tool';
+                        var toolIcon = document.createElement('i');
+                        toolIcon.className = 'bi ' + getToolIcon(s.tool || s.type) + ' me-1';
+                        toolDiv.appendChild(toolIcon);
+                        toolDiv.appendChild(document.createTextNode(s.tool || s.type));
+                        stepDiv.appendChild(toolDiv);
+                    }
+
+                    // Description
+                    if (s.description) {
+                        var descDiv = document.createElement('div');
+                        descDiv.className = 'text-muted small mt-1';
+                        descDiv.textContent = s.description;
+                        stepDiv.appendChild(descDiv);
+                    }
+
+                    // Condition detail
+                    if (s.condition || s.when) {
+                        var condEl = document.createElement('small');
+                        condEl.className = 'd-block mt-1';
+                        condEl.style.cssText = 'color:#fbbf24;font-size:0.75rem;';
+                        var condElIcon = document.createElement('i');
+                        condElIcon.className = 'bi bi-signpost-split me-1';
+                        condEl.appendChild(condElIcon);
+                        condEl.appendChild(document.createTextNode('Condition: ' + String(s.condition || s.when)));
+                        stepDiv.appendChild(condEl);
+                    }
+
+                    // for_each detail
+                    if (s.for_each) {
+                        var feEl = document.createElement('small');
+                        feEl.className = 'd-block mt-1';
+                        feEl.style.cssText = 'color:#a78bfa;font-size:0.75rem;';
+                        var feIcon = document.createElement('i');
+                        feIcon.className = 'bi bi-arrow-repeat me-1';
+                        feEl.appendChild(feIcon);
+                        feEl.appendChild(document.createTextNode('for_each: ' + String(s.for_each)));
+                        stepDiv.appendChild(feEl);
+                    }
+
+                    // Params
+                    if (s.params) {
+                        var pEl = document.createElement('small');
+                        pEl.className = 'text-muted d-block mt-1';
+                        pEl.style.cssText = 'font-size:0.72rem;font-family:monospace;';
+                        pEl.textContent = 'params: ' + JSON.stringify(s.params);
+                        stepDiv.appendChild(pEl);
+                    }
+
+                    stepsContainer.appendChild(stepDiv);
+                });
+
+                body.appendChild(stepsContainer);
+            } else {
+                var noSteps = document.createElement('p');
+                noSteps.className = 'text-muted';
+                noSteps.textContent = 'No steps defined.';
+                body.appendChild(noSteps);
+            }
+
+            // Tool coverage summary
+            var tools = collectTools(steps);
+            if (tools.length > 0) {
+                var toolSection = document.createElement('div');
+                toolSection.className = 'tool-coverage-section';
+                var toolTitle = document.createElement('h6');
+                toolTitle.className = 'mb-2';
+                var toolTitleIcon = document.createElement('i');
+                toolTitleIcon.className = 'bi bi-wrench-adjustable me-1 text-accent';
+                toolTitle.appendChild(toolTitleIcon);
+                toolTitle.appendChild(document.createTextNode('Tool Coverage (' + tools.length + ' unique)'));
+                toolSection.appendChild(toolTitle);
+
+                var chipWrap = document.createElement('div');
+                tools.forEach(function(t) {
+                    var chip = document.createElement('span');
+                    chip.className = 'tool-chip';
+                    var chipIcon = document.createElement('i');
+                    chipIcon.className = 'bi ' + getToolIcon(t);
+                    chip.appendChild(chipIcon);
+                    chip.appendChild(document.createTextNode(t));
+                    chipWrap.appendChild(chip);
+                });
+                toolSection.appendChild(chipWrap);
+                body.appendChild(toolSection);
+            }
+
+            // Show "Run this Playbook" button in footer
+            runBtnFooter.style.display = '';
+            runBtnFooter.setAttribute('data-playbook-id', playbookId);
+            runBtnFooter.setAttribute('data-playbook-name', pbName);
+        })
+        .catch(function (err) {
+            while (body.firstChild) body.removeChild(body.firstChild);
+            var errDiv = document.createElement('div');
+            errDiv.className = 'text-danger py-3';
+            errDiv.textContent = 'Error: ' + err.message;
+            body.appendChild(errDiv);
+        });
+    }
+
+    /* ── "Run this Playbook" button in view modal ── */
+    document.getElementById('viewModalRunBtn').addEventListener('click', function() {
+        var pbId = this.getAttribute('data-playbook-id');
+        var pbName = this.getAttribute('data-playbook-name');
+        // Close view modal
+        var viewModalEl = document.getElementById('viewPlaybookModal');
+        var viewModal = bootstrap.Modal.getInstance(viewModalEl);
+        if (viewModal) viewModal.hide();
+        // Open run modal after a short delay to let the view modal close
+        setTimeout(function() {
+            openRunModal(pbId, pbName);
+        }, 300);
+    });
+
+    /* ── Fetch playbooks via API (for dynamic refresh) ── */
+    function loadPlaybooks() {
+        fetch('/api/playbooks')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var playbooks = data.playbooks || data || [];
+            allPlaybooksData = playbooks;
+            var grid = document.getElementById('playbookGrid');
+            while (grid.firstChild) grid.removeChild(grid.firstChild);
+
+            if (!playbooks.length) {
+                var empty = document.createElement('div');
+                empty.className = 'col-12';
+                var emptyCard = document.createElement('div');
+                emptyCard.className = 'card';
+                var emptyBody = document.createElement('div');
+                emptyBody.className = 'card-body text-center py-5 text-muted';
+                var emptyIcon = document.createElement('i');
+                emptyIcon.className = 'bi bi-journal-x fs-1 d-block mb-2 opacity-50';
+                emptyBody.appendChild(emptyIcon);
+                emptyBody.appendChild(document.createTextNode('No playbooks available.'));
+                emptyCard.appendChild(emptyBody);
+                empty.appendChild(emptyCard);
+                grid.appendChild(empty);
+                updateStats([]);
+                return;
+            }
+
+            playbooks.forEach(function(pb) {
+                grid.appendChild(buildCard(pb));
+            });
+
+            updateStats(playbooks);
+            applyFilters();
+        })
+        .catch(function(err) {
+            showNotification('Failed to refresh: ' + err.message, 'error');
+        });
+    }
+
+    /* ── Enhance server-rendered cards on initial load ── */
+    function enhanceServerRenderedCards() {
+        var cols = document.querySelectorAll('#playbookGrid .playbook-col');
+        cols.forEach(function(col) {
+            var name = col.getAttribute('data-pb-name') || '';
+            var desc = col.getAttribute('data-pb-desc') || '';
+            var cat = detectCategory(name, desc);
+            col.setAttribute('data-pb-category', cat);
+
+            // Add category badge and extra meta to existing cards
+            var metaDiv = col.querySelector('.pb-meta');
+            if (metaDiv && !metaDiv.querySelector('.category-badge')) {
+                var catInfo = getCategoryInfo(cat);
+                var badge = document.createElement('span');
+                badge.className = 'category-badge cat-' + cat;
+                badge.textContent = catInfo.label;
+                metaDiv.appendChild(badge);
+
+                // Replace card icon
+                var titleIcon = col.querySelector('.pb-title i');
+                if (titleIcon) {
+                    titleIcon.className = 'bi ' + catInfo.icon + ' me-2 text-accent';
+                }
+
+                // Add last run info
+                var pbId = '';
+                var viewBtn = col.querySelector('.playbook-view-btn');
+                if (viewBtn) pbId = viewBtn.getAttribute('data-playbook-id') || '';
+                var lastRun = formatLastRun(getLastRun(pbId));
+                if (lastRun) {
+                    var lrDiv = document.createElement('div');
+                    lrDiv.className = 'last-run-info';
+                    var lrIcon = document.createElement('i');
+                    lrIcon.className = 'bi bi-arrow-repeat me-1';
+                    lrDiv.appendChild(lrIcon);
+                    lrDiv.appendChild(document.createTextNode('Last run: ' + lastRun));
+                    var actions = col.querySelector('.d-flex.gap-2');
+                    if (actions) {
+                        actions.parentNode.insertBefore(lrDiv, actions);
+                    }
+                }
+            }
+        });
+    }
+
+    // Auto-load from API if server-rendered list is empty, otherwise enhance existing
+    var grid = document.getElementById('playbookGrid');
+    if (grid && grid.querySelectorAll('.playbook-card').length === 0) {
+        loadPlaybooks();
+    } else {
+        enhanceServerRenderedCards();
+    }
+
+    return {
+        loadPlaybooks: loadPlaybooks
+    };
+})();
+</script>
+{% endblock %}

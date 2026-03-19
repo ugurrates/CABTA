@@ -1,0 +1,173 @@
+name: IOC Triage
+description: >
+  Suspicious IOC (IP, domain, hash, URL) icin otomatik triaj.
+  Birden fazla free threat intel kaynagi ile zenginlestirme.
+trigger_type: manual
+input_params:
+  - name: ioc
+    description: IOC value (IP, domain, hash, or URL)
+    required: true
+  - name: ioc_type
+    description: IOC type hint (ip, domain, hash, url) - auto-detected if omitted
+    required: false
+
+steps:
+  - name: identify_ioc_type
+    tool: extract_iocs
+    params:
+      text: "{{ioc}}"
+    description: IOC tipini otomatik tespit et
+
+  # ===== IP Analizi =====
+  - name: geoip
+    tool: mcp:osint-tools/geoip_lookup
+    params:
+      ip: "{{ioc}}"
+    condition:
+      if: "{{ioc_type}} == 'ip' or {{identify_ioc_type.ips}}"
+    description: GeoIP lokasyon ve ASN bilgisi
+
+  - name: reverse_dns
+    tool: mcp:osint-tools/reverse_dns
+    params:
+      ip: "{{ioc}}"
+    condition:
+      if: "{{ioc_type}} == 'ip' or {{identify_ioc_type.ips}}"
+    description: Reverse DNS cozumlemesi
+
+  - name: feodo_check
+    tool: mcp:threat-intel-free/feodo_tracker_check
+    params:
+      ip: "{{ioc}}"
+    condition:
+      if: "{{ioc_type}} == 'ip' or {{identify_ioc_type.ips}}"
+    description: Feodo Tracker botnet C2 kontrolu
+
+  - name: tor_check
+    tool: mcp:threat-intel-free/tor_exit_node_check
+    params:
+      ip: "{{ioc}}"
+    condition:
+      if: "{{ioc_type}} == 'ip' or {{identify_ioc_type.ips}}"
+    description: Tor exit node kontrolu
+
+  - name: blocklist_check
+    tool: mcp:threat-intel-free/blocklist_check
+    params:
+      ip: "{{ioc}}"
+    condition:
+      if: "{{ioc_type}} == 'ip' or {{identify_ioc_type.ips}}"
+    description: Spamhaus, DShield, Blocklist.de kontrolu
+
+  # ===== Domain Analizi =====
+  - name: whois
+    tool: mcp:osint-tools/whois_lookup
+    params:
+      target: "{{ioc}}"
+    condition:
+      if: "{{ioc_type}} == 'domain'"
+    description: WHOIS kayit bilgisi
+
+  - name: dns_resolve
+    tool: mcp:osint-tools/dns_resolve
+    params:
+      domain: "{{ioc}}"
+    condition:
+      if: "{{ioc_type}} == 'domain'"
+    description: DNS kayitlari
+
+  - name: ssl_check
+    tool: mcp:osint-tools/ssl_certificate_info
+    params:
+      host: "{{ioc}}"
+    condition:
+      if: "{{ioc_type}} == 'domain'"
+    description: SSL sertifika bilgisi
+
+  - name: subdomains
+    tool: mcp:osint-tools/subdomain_enumerate
+    params:
+      domain: "{{ioc}}"
+    condition:
+      if: "{{ioc_type}} == 'domain'"
+    description: Subdomain kesfet (crt.sh)
+
+  # ===== ArgusWatch Zenginlestirme =====
+  - name: shodan_ip_check
+    tool: mcp:arguswatch/shodan_internetdb_lookup
+    params:
+      ip: "{{ioc}}"
+    condition:
+      if: "{{ioc_type}} == 'ip' or {{identify_ioc_type.ips}}"
+    description: Shodan InternetDB ile IP acik port, CVE, servis kontrolu (FREE)
+
+  - name: circl_misp_check
+    tool: mcp:arguswatch/circl_misp_feed_check
+    params:
+      ioc: "{{ioc}}"
+    description: CIRCL MISP European CERT threat intel kontrolu
+
+  - name: crtsh_check
+    tool: mcp:arguswatch/crtsh_subdomain_search
+    params:
+      domain: "{{ioc}}"
+    condition:
+      if: "{{ioc_type}} == 'domain'"
+    description: crt.sh Certificate Transparency ile subdomain kesfif
+
+  # ===== URL Analizi =====
+  - name: openphish_check
+    tool: mcp:arguswatch/openphish_lookup
+    params:
+      url: "{{ioc}}"
+    condition:
+      if: "{{ioc_type}} == 'url'"
+    description: OpenPhish phishing URL feed kontrolu
+
+  - name: urlhaus_check
+    tool: mcp:threat-intel-free/urlhaus_lookup
+    params:
+      indicator: "{{ioc}}"
+    description: URLhaus'ta kontrol et
+
+  # ===== Hash Analizi =====
+  - name: malwarebazaar_check
+    tool: mcp:threat-intel-free/malwarebazaar_hash_lookup
+    params:
+      hash_value: "{{ioc}}"
+    condition:
+      if: "{{ioc_type}} == 'hash'"
+    description: MalwareBazaar'da hash kontrol et
+
+  # ===== Genel =====
+  - name: threatfox_check
+    tool: mcp:threat-intel-free/threatfox_ioc_lookup
+    params:
+      indicator: "{{ioc}}"
+    description: ThreatFox'ta IOC kontrol et
+
+  - name: threat_intel_lookup
+    tool: investigate_ioc
+    params:
+      ioc: "{{ioc}}"
+    description: Dahili tehdit istihbarati kontrolu
+
+  # ===== Karar =====
+  - name: evaluate_verdict
+    condition:
+      if: "{{threat_intel_lookup.threat_score}} >= 70 or {{blocklist_check.malicious}} or {{feodo_check.malicious}}"
+      then: escalate
+      else: document
+    description: Tehdit seviyesini degerlendir
+
+  - name: escalate
+    tool: generate_rules
+    params:
+      analysis_result: "{{threat_intel_lookup}}"
+    description: Zararli IOC icin tespit kurallari uret
+
+  - name: document
+    action: final_answer
+    description: >
+      IOC triaj raporu: GeoIP, WHOIS, DNS, threat intel sonuclari,
+      blocklist durumu, verdict ve aksiyonlar

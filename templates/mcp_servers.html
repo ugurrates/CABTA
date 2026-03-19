@@ -1,0 +1,1080 @@
+{# Author: Ugur Ates #}
+{# MCP Servers - Management of MCP server connections #}
+{% extends "base.html" %}
+
+{% block title %}MCP Servers - Blue Team Assistant{% endblock %}
+{% block page_title %}MCP Servers{% endblock %}
+{% block page_subtitle %}<span class="page-subtitle">Model Context Protocol Server Management</span>{% endblock %}
+
+{% block header_actions %}
+<button class="btn btn-sm btn-accent" data-bs-toggle="modal" data-bs-target="#addServerModal">
+    <i class="bi bi-plus-lg me-1"></i>Add Server
+</button>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* ── Status dots ─────────────────────────────────────────── */
+    .status-dot-lg {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 0.4rem;
+        vertical-align: middle;
+    }
+    .status-dot-lg.connected { background: var(--color-success); box-shadow: 0 0 6px var(--color-success); }
+    .status-dot-lg.disconnected { background: var(--color-danger); }
+    .status-dot-lg.not_installed { background: #f59e0b; }
+    .status-dot-lg.planned { background: #6b7280; }
+    .status-dot-lg.error { background: var(--color-warning); }
+
+    /* ── Status badges ───────────────────────────────────────── */
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .status-badge.connected { background: rgba(34,197,94,0.15); color: var(--color-success); }
+    .status-badge.not_installed { background: rgba(245,158,11,0.15); color: #f59e0b; }
+    .status-badge.disconnected { background: rgba(239,68,68,0.15); color: var(--color-danger); }
+    .status-badge.planned { background: rgba(107,114,128,0.15); color: #9ca3af; }
+
+    /* ── Tools row ───────────────────────────────────────────── */
+    .tools-list-row td {
+        padding: 0.75rem 1rem;
+        background: var(--bg-tertiary);
+        border-top: 1px solid var(--border-color);
+    }
+    .tool-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.2rem 0.6rem;
+        border-radius: 4px;
+        background: var(--code-bg);
+        border: 1px solid var(--border-color);
+        font-size: 0.78rem;
+        color: var(--text-primary);
+        margin: 0.15rem;
+    }
+    .tool-chip i { color: var(--color-accent); font-size: 0.7rem; }
+
+    /* ── Transport badge ─────────────────────────────────────── */
+    .transport-badge {
+        font-size: 0.7rem;
+        padding: 0.15rem 0.45rem;
+        border-radius: 3px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .transport-stdio { background: rgba(88,166,255,0.15); color: var(--color-accent); }
+    .transport-sse { background: rgba(34,197,94,0.15); color: var(--color-success); }
+    .transport-http { background: rgba(245,158,11,0.15); color: var(--color-warning); }
+
+    /* ── Category filter pills ───────────────────────────────── */
+    .category-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-bottom: 1rem;
+    }
+    .category-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.3rem 0.7rem;
+        border-radius: 20px;
+        font-size: 0.78rem;
+        border: 1px solid var(--border-color);
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .category-pill:hover, .category-pill.active {
+        background: var(--color-accent);
+        color: #fff;
+        border-color: var(--color-accent);
+    }
+    .category-pill .pill-count {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: rgba(255,255,255,0.2);
+        font-size: 0.68rem;
+        font-weight: 700;
+        padding: 0 4px;
+    }
+    .category-pill:not(.active) .pill-count {
+        background: var(--bg-secondary);
+    }
+
+    /* ── Install info popover ────────────────────────────────── */
+    .install-info {
+        font-size: 0.78rem;
+        max-width: 380px;
+    }
+    .install-info code {
+        display: block;
+        padding: 0.4rem 0.6rem;
+        margin-top: 0.3rem;
+        background: var(--code-bg);
+        border-radius: 4px;
+        font-size: 0.75rem;
+        word-break: break-all;
+    }
+    .install-info .install-note {
+        display: block;
+        margin-top: 0.3rem;
+        color: var(--text-secondary);
+        font-size: 0.72rem;
+    }
+
+    /* ── Summary cards ───────────────────────────────────────── */
+    .summary-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 1.25rem;
+    }
+    .summary-card {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.8rem 1rem;
+        border-radius: 8px;
+        background: var(--bg-tertiary);
+        border: 1px solid var(--border-color);
+    }
+    .summary-card .sc-icon {
+        font-size: 1.5rem;
+        width: 40px;
+        text-align: center;
+    }
+    .summary-card .sc-value {
+        font-size: 1.3rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+    .summary-card .sc-label {
+        font-size: 0.72rem;
+        color: var(--text-secondary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    /* ── Category group header ───────────────────────────────── */
+    .category-group-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.6rem 1rem;
+        background: var(--bg-tertiary);
+        border-bottom: 1px solid var(--border-color);
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+    .category-group-header i {
+        color: var(--color-accent);
+    }
+
+    /* ── Check availability spinner ──────────────────────────── */
+    .check-spinner {
+        display: none;
+        width: 14px;
+        height: 14px;
+        border: 2px solid var(--border-color);
+        border-top-color: var(--color-accent);
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Package link badge ──────────────────────────────────── */
+    .package-link {
+        font-size: 0.68rem;
+        color: var(--color-accent);
+        text-decoration: none;
+        opacity: 0.8;
+    }
+    .package-link:hover { opacity: 1; text-decoration: underline; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header description -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <p class="mb-0" style="color: var(--text-secondary);">
+        MCP sunucu baglantilarini yapilandirin ve yonetin. / Configure and manage MCP server connections.
+    </p>
+    <button class="btn btn-sm btn-ghost" onclick="MCPServers.loadServers()">
+        <i class="bi bi-arrow-clockwise me-1"></i>Yenile / Refresh
+    </button>
+</div>
+
+<!-- Summary cards -->
+{% set total_count = servers | length %}
+{% set connected_count = servers | selectattr('live_status', 'defined') | selectattr('live_status') | list | length %}
+{% set installable_count = servers | selectattr('status', 'equalto', 'requires_install') | list | length %}
+{% set planned_count = servers | selectattr('status', 'equalto', 'planned') | list | length %}
+<div class="summary-cards">
+    <div class="summary-card">
+        <div class="sc-icon text-accent"><i class="bi bi-hdd-network"></i></div>
+        <div>
+            <div class="sc-value">{{ total_count }}</div>
+            <div class="sc-label">Toplam / Total</div>
+        </div>
+    </div>
+    <div class="summary-card">
+        <div class="sc-icon" style="color:var(--color-success)"><i class="bi bi-check-circle-fill"></i></div>
+        <div>
+            <div class="sc-value" id="connectedCount">0</div>
+            <div class="sc-label">Bagli / Connected</div>
+        </div>
+    </div>
+    <div class="summary-card">
+        <div class="sc-icon" style="color:#f59e0b"><i class="bi bi-download"></i></div>
+        <div>
+            <div class="sc-value">{{ installable_count }}</div>
+            <div class="sc-label">Kurulabilir / Installable</div>
+        </div>
+    </div>
+    <div class="summary-card">
+        <div class="sc-icon" style="color:#6b7280"><i class="bi bi-clock-history"></i></div>
+        <div>
+            <div class="sc-value">{{ planned_count }}</div>
+            <div class="sc-label">Planli / Planned</div>
+        </div>
+    </div>
+</div>
+
+<!-- Category filter pills -->
+<div class="category-filters" id="categoryFilters">
+    <span class="category-pill active" data-category="all">
+        <i class="bi bi-grid-3x3-gap"></i> Tumu / All
+        <span class="pill-count">{{ total_count }}</span>
+    </span>
+    {% if active_categories is defined %}
+    {% for cat in active_categories %}
+    {% set cat_count = servers | selectattr('category', 'equalto', cat.key) | list | length %}
+    <span class="category-pill" data-category="{{ cat.key }}"
+          title="{{ cat.get('description_tr', '') }}">
+        <i class="{{ cat.get('icon', 'bi-server') }}"></i>
+        {{ cat.get('label', cat.key) }}
+        <span class="pill-count">{{ cat_count }}</span>
+    </span>
+    {% endfor %}
+    {% endif %}
+</div>
+
+<!-- Status filter buttons -->
+<div class="d-flex gap-2 mb-3">
+    <button class="btn btn-sm btn-ghost status-filter-btn active" data-status="all"
+            title="Tum sunuculari goster / Show all servers">
+        Tumu / All
+    </button>
+    <button class="btn btn-sm btn-ghost status-filter-btn" data-status="requires_install"
+            title="Kurulabilir paketler / Installable packages">
+        <i class="bi bi-download me-1" style="color:#f59e0b"></i>Kurulabilir / Installable
+    </button>
+    <button class="btn btn-sm btn-ghost status-filter-btn" data-status="planned"
+            title="Henuz paketi yok / No package yet">
+        <i class="bi bi-clock-history me-1" style="color:#6b7280"></i>Planli / Planned
+    </button>
+</div>
+
+<!-- Servers Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="mb-0"><i class="bi bi-hdd-network me-2 text-accent"></i>Yapilandirilmis Sunucular / Configured Servers</h6>
+        <button class="btn btn-sm btn-outline-info" onclick="MCPServers.checkAll()"
+                title="Tum sunucularin kullanilabilirligini kontrol et / Check availability of all servers">
+            <i class="bi bi-patch-check me-1"></i>Tumunu Kontrol Et / Check All
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="serversTable">
+                <thead>
+                    <tr>
+                        <th style="width:36px;"></th>
+                        <th>Sunucu / Name</th>
+                        <th>Transport</th>
+                        <th>Durum / Status</th>
+                        <th>Araclar / Tools</th>
+                        <th>Islemler / Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="serversBody">
+                    {% if servers %}
+                        {# Group servers by category #}
+                        {% set ns = namespace(current_cat='') %}
+                        {% for srv in servers %}
+                        {% set cat = srv.get('category', 'other') if srv.get is defined else 'other' %}
+                        {% set ls = srv.get('live_status', {}) if srv.get is defined else {} %}
+                        {% set is_connected = ls and ls.get('connected', false) if ls.get is defined else false %}
+                        {% set srv_status = srv.get('status', 'planned') if srv.get is defined else 'planned' %}
+                        {% if is_connected %}
+                            {% set display_status = 'connected' %}
+                        {% elif srv_status == 'requires_install' %}
+                            {% set display_status = 'not_installed' %}
+                        {% elif srv_status == 'planned' %}
+                            {% set display_status = 'planned' %}
+                        {% else %}
+                            {% set display_status = 'disconnected' %}
+                        {% endif %}
+                        {% set transport_val = (srv.transport | default('stdio')) | lower %}
+                        {% set install_cmd = srv.get('install_command', '') if srv.get is defined else '' %}
+                        {% set install_note = srv.get('install_note', '') if srv.get is defined else '' %}
+                        {% set package_url = srv.get('package_url', '') if srv.get is defined else '' %}
+
+                        {# Category group header #}
+                        {% if cat != ns.current_cat %}
+                        {% set ns.current_cat = cat %}
+                        {% set cat_meta = categories.get(cat, {}) if categories is defined and categories.get is defined else {} %}
+                        <tr class="category-header-row" data-category="{{ cat }}">
+                            <td colspan="6" class="p-0">
+                                <div class="category-group-header">
+                                    <i class="{{ cat_meta.get('icon', 'bi-server') if cat_meta.get is defined else 'bi-server' }}"></i>
+                                    {{ cat_meta.get('label', cat.replace('_', ' ').title()) if cat_meta.get is defined else cat.replace('_', ' ').title() }}
+                                    <small class="text-muted ms-2">{{ cat_meta.get('description_tr', '') if cat_meta.get is defined else '' }}</small>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endif %}
+
+                        <tr data-server-name="{{ srv.name | e }}"
+                            data-category="{{ cat }}"
+                            data-status="{{ srv_status }}">
+                            <td>
+                                {% if is_connected %}
+                                <button class="btn btn-sm btn-ghost p-0 toggle-tools-btn"
+                                        title="Araclari goster / Show tools">
+                                    <i class="bi bi-chevron-right"></i>
+                                </button>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <strong>{{ srv.name | default('Unknown') | e }}</strong>
+                                {% if package_url %}
+                                <a href="{{ package_url }}" target="_blank" rel="noopener" class="package-link ms-1"
+                                   title="Paket sayfasi / Package page">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                </a>
+                                {% endif %}
+                                {% if srv.description %}
+                                <small class="d-block text-muted">{{ srv.description | e }}</small>
+                                {% endif %}
+                                {% if install_note %}
+                                <small class="d-block" style="color:#9ca3af;font-size:0.7rem;">
+                                    <i class="bi bi-info-circle me-1"></i>{{ install_note | e }}
+                                </small>
+                                {% endif %}
+                            </td>
+                            <td><span class="transport-badge transport-{{ transport_val }}">{{ transport_val }}</span></td>
+                            <td>
+                                <span class="status-badge {{ display_status }}" id="status-{{ srv.name | e }}">
+                                    <span class="status-dot-lg {{ display_status }}"></span>
+                                    {% if display_status == 'connected' %}
+                                        Bagli / Connected
+                                    {% elif display_status == 'not_installed' %}
+                                        Kurulum Gerekli / Not Installed
+                                    {% elif display_status == 'planned' %}
+                                        Planli / Planned
+                                    {% else %}
+                                        Baglanti Kesildi / Disconnected
+                                    {% endif %}
+                                </span>
+                                <span class="check-spinner" id="spinner-{{ srv.name | e }}"></span>
+                            </td>
+                            <td><span class="badge bg-secondary">{{ ls.get('tool_count', 0) if ls.get is defined else '-' }}</span></td>
+                            <td>
+                                <div class="d-flex gap-1 flex-wrap">
+                                    {# Check availability button #}
+                                    <button class="btn btn-sm btn-outline-warning server-check-btn"
+                                            title="Kullanilabilirligi kontrol et / Check availability"
+                                            data-server-name="{{ srv.name | e }}">
+                                        <i class="bi bi-patch-question"></i>
+                                    </button>
+                                    {% if is_connected %}
+                                    <button class="btn btn-sm btn-outline-secondary server-disconnect-btn"
+                                            title="Baglanti kes / Disconnect" data-server-name="{{ srv.name | e }}">
+                                        <i class="bi bi-pause-circle"></i>
+                                    </button>
+                                    {% else %}
+                                    <button class="btn btn-sm btn-accent server-connect-btn"
+                                            title="Baglan / Connect" data-server-name="{{ srv.name | e }}">
+                                        <i class="bi bi-play-circle"></i>
+                                    </button>
+                                    {% endif %}
+                                    <button class="btn btn-sm btn-outline-info server-tools-btn"
+                                            title="Araclari listele / List tools" data-server-name="{{ srv.name | e }}">
+                                        <i class="bi bi-tools"></i>
+                                    </button>
+                                    {% if install_cmd %}
+                                    <button class="btn btn-sm btn-outline-success server-install-info-btn"
+                                            title="Kurulum bilgisi / Install info"
+                                            data-server-name="{{ srv.name | e }}"
+                                            data-install-cmd="{{ install_cmd | e }}"
+                                            data-install-note="{{ install_note | e }}">
+                                        <i class="bi bi-terminal"></i>
+                                    </button>
+                                    {% endif %}
+                                    <button class="btn btn-sm btn-outline-danger server-delete-btn"
+                                            title="Kaldir / Remove" data-server-name="{{ srv.name | e }}">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr id="noServersRow">
+                            <td colspan="6" class="text-center py-5 text-muted">
+                                <i class="bi bi-hdd-network fs-1 d-block mb-2 opacity-50"></i>
+                                MCP sunucusu yapilandirilmamis. / No MCP servers configured.<br>
+                                <small>Ilk MCP sunucunuzu eklemek icin "Add Server" dugmesine tiklayin.</small>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Server Modal -->
+<div class="modal fade" id="addServerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="background-color: var(--bg-secondary); color: var(--text-primary); border-color: var(--border-color);">
+            <div class="modal-header" style="border-bottom-color: var(--border-color);">
+                <h5 class="modal-title"><i class="bi bi-plus-circle me-2 text-accent"></i>MCP Sunucusu Ekle / Add MCP Server</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addServerForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="serverName" class="form-label">Sunucu Adi / Server Name <span class="text-danger">*</span></label>
+                            <input type="text" id="serverName" class="form-control" required placeholder="e.g. my-mcp-server"
+                                style="background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-primary);">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="serverTransport" class="form-label">Transport <span class="text-danger">*</span></label>
+                            <select id="serverTransport" class="form-select"
+                                style="background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-primary);">
+                                <option value="stdio">stdio (Yerel Islem / Local Process)</option>
+                                <option value="sse">SSE (Server-Sent Events)</option>
+                                <option value="http">HTTP (Streamable HTTP)</option>
+                            </select>
+                        </div>
+                        <div class="col-12" id="stdioFields">
+                            <label for="serverCommand" class="form-label">Komut / Command</label>
+                            <input type="text" id="serverCommand" class="form-control"
+                                   placeholder="e.g. npx -y @modelcontextprotocol/server-filesystem"
+                                   style="background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-primary);">
+                        </div>
+                        <div class="col-12" id="stdioArgsField">
+                            <label for="serverArgs" class="form-label">Argümanlar / Arguments (her satira bir tane / one per line)</label>
+                            <textarea id="serverArgs" class="form-control" rows="2" placeholder="/path/to/allowed/dir"
+                                style="background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-primary);"></textarea>
+                        </div>
+                        <div class="col-12" id="urlField" style="display:none;">
+                            <label for="serverUrl" class="form-label">Sunucu URL / Server URL</label>
+                            <input type="url" id="serverUrl" class="form-control" placeholder="http://localhost:8080/mcp"
+                                style="background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-primary);">
+                        </div>
+                        <div class="col-12" id="tokenField" style="display:none;">
+                            <label for="serverToken" class="form-label">Kimlik Dogrulama / Auth Token (istege bagli / optional)</label>
+                            <input type="password" id="serverToken" class="form-control" placeholder="Bearer token for authentication"
+                                style="background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-primary);">
+                        </div>
+                        <div class="col-12">
+                            <label for="serverEnv" class="form-label">Ortam Degiskenleri / Environment Variables (JSON, istege bagli / optional)</label>
+                            <textarea id="serverEnv" class="form-control" rows="2" placeholder='{"API_KEY": "your-key"}'
+                                style="background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-primary);font-family:monospace;font-size:0.85rem;"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <label for="serverDescription" class="form-label">Aciklama / Description</label>
+                            <input type="text" id="serverDescription" class="form-control" placeholder="Bu sunucu ne sagliyor? / What does this server provide?"
+                                style="background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-primary);">
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer" style="border-top-color: var(--border-color);">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Iptal / Cancel</button>
+                <button type="button" class="btn btn-accent btn-sm" id="addServerBtn">
+                    <i class="bi bi-plus-lg me-1"></i>Sunucu Ekle / Add Server
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tools Modal -->
+<div class="modal fade" id="toolsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" style="background-color: var(--bg-secondary); color: var(--text-primary); border-color: var(--border-color);">
+            <div class="modal-header" style="border-bottom-color: var(--border-color);">
+                <h5 class="modal-title"><i class="bi bi-tools me-2 text-accent"></i>Sunucu Araclari / Server Tools</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="toolsModalBody">
+                <div class="text-center py-4 text-muted">Yukleniyor... / Loading...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Install Info Modal -->
+<div class="modal fade" id="installInfoModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content" style="background-color: var(--bg-secondary); color: var(--text-primary); border-color: var(--border-color);">
+            <div class="modal-header" style="border-bottom-color: var(--border-color);">
+                <h5 class="modal-title"><i class="bi bi-terminal me-2 text-accent"></i>Kurulum Bilgisi / Install Info</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="installInfoBody">
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var MCPServers = (function () {
+    'use strict';
+
+    /* ── Category filtering ──────────────────────────────────── */
+    var categoryFilters = document.getElementById('categoryFilters');
+    if (categoryFilters) {
+        categoryFilters.addEventListener('click', function(e) {
+            var pill = e.target.closest('.category-pill');
+            if (!pill) return;
+            // Toggle active state
+            categoryFilters.querySelectorAll('.category-pill').forEach(function(p) {
+                p.classList.remove('active');
+            });
+            pill.classList.add('active');
+            var cat = pill.getAttribute('data-category');
+            filterTable();
+        });
+    }
+
+    /* ── Status filtering ────────────────────────────────────── */
+    document.querySelectorAll('.status-filter-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.status-filter-btn').forEach(function(b) {
+                b.classList.remove('active');
+            });
+            btn.classList.add('active');
+            filterTable();
+        });
+    });
+
+    function filterTable() {
+        var activeCatPill = categoryFilters.querySelector('.category-pill.active');
+        var activeCat = activeCatPill ? activeCatPill.getAttribute('data-category') : 'all';
+        var activeStatusBtn = document.querySelector('.status-filter-btn.active');
+        var activeStatus = activeStatusBtn ? activeStatusBtn.getAttribute('data-status') : 'all';
+
+        var rows = document.querySelectorAll('#serversBody tr[data-server-name]');
+        var headerRows = document.querySelectorAll('#serversBody tr.category-header-row');
+        var visibleCategories = {};
+
+        rows.forEach(function(row) {
+            var rowCat = row.getAttribute('data-category');
+            var rowStatus = row.getAttribute('data-status');
+            var catMatch = (activeCat === 'all' || rowCat === activeCat);
+            var statusMatch = (activeStatus === 'all' || rowStatus === activeStatus);
+            var visible = catMatch && statusMatch;
+            row.style.display = visible ? '' : 'none';
+            if (visible) {
+                visibleCategories[rowCat] = true;
+            }
+        });
+
+        // Show/hide category headers
+        headerRows.forEach(function(hr) {
+            var hCat = hr.getAttribute('data-category');
+            hr.style.display = visibleCategories[hCat] ? '' : 'none';
+        });
+    }
+
+    /* ── Toggle transport fields in modal ────────────────────── */
+    var transportSelect = document.getElementById('serverTransport');
+    if (transportSelect) {
+        transportSelect.addEventListener('change', function () {
+            var isStdio = transportSelect.value === 'stdio';
+            document.getElementById('stdioFields').style.display = isStdio ? '' : 'none';
+            document.getElementById('stdioArgsField').style.display = isStdio ? '' : 'none';
+            document.getElementById('urlField').style.display = isStdio ? 'none' : '';
+            document.getElementById('tokenField').style.display = isStdio ? 'none' : '';
+        });
+    }
+
+    /* ── Event delegation for table actions ──────────────────── */
+    document.getElementById('serversTable').addEventListener('click', function (e) {
+        var connectBtn = e.target.closest('.server-connect-btn');
+        if (connectBtn) {
+            connectServer(connectBtn.getAttribute('data-server-name'));
+            return;
+        }
+        var disconnectBtn = e.target.closest('.server-disconnect-btn');
+        if (disconnectBtn) {
+            disconnectServer(disconnectBtn.getAttribute('data-server-name'));
+            return;
+        }
+        var toolsBtn = e.target.closest('.server-tools-btn');
+        if (toolsBtn) {
+            listTools(toolsBtn.getAttribute('data-server-name'));
+            return;
+        }
+        var deleteBtn = e.target.closest('.server-delete-btn');
+        if (deleteBtn) {
+            deleteServer(deleteBtn.getAttribute('data-server-name'));
+            return;
+        }
+        var checkBtn = e.target.closest('.server-check-btn');
+        if (checkBtn) {
+            checkServer(checkBtn.getAttribute('data-server-name'));
+            return;
+        }
+        var installBtn = e.target.closest('.server-install-info-btn');
+        if (installBtn) {
+            showInstallInfo(
+                installBtn.getAttribute('data-server-name'),
+                installBtn.getAttribute('data-install-cmd'),
+                installBtn.getAttribute('data-install-note')
+            );
+            return;
+        }
+        var toggleBtn = e.target.closest('.toggle-tools-btn');
+        if (toggleBtn) {
+            var row = toggleBtn.closest('tr');
+            var serverName = row.getAttribute('data-server-name');
+            toggleInlineTools(row, serverName, toggleBtn.querySelector('i'));
+        }
+    });
+
+    /* ── Toggle inline tools row ─────────────────────────────── */
+    function toggleInlineTools(parentRow, serverName, icon) {
+        var existing = parentRow.nextElementSibling;
+        if (existing && existing.classList.contains('tools-list-row')) {
+            existing.remove();
+            icon.className = 'bi bi-chevron-right';
+            return;
+        }
+        icon.className = 'bi bi-chevron-down';
+
+        var toolRow = document.createElement('tr');
+        toolRow.className = 'tools-list-row';
+        var td = document.createElement('td');
+        td.colSpan = 6;
+        td.style.background = 'var(--bg-tertiary)';
+        td.style.padding = '0.75rem 1rem';
+        td.textContent = 'Araclar yukleniyor... / Loading tools...';
+        toolRow.appendChild(td);
+        parentRow.parentNode.insertBefore(toolRow, parentRow.nextSibling);
+
+        fetch('/api/mcp/servers/' + encodeURIComponent(serverName) + '/tools')
+        .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function (data) {
+            var tools = data.tools || [];
+            while (td.firstChild) td.removeChild(td.firstChild);
+            if (!tools.length) {
+                td.textContent = 'Arac bulunamadi. / No tools discovered.';
+                return;
+            }
+            var label = document.createElement('strong');
+            label.className = 'small d-block mb-2';
+            label.textContent = 'Mevcut Araclar / Available Tools (' + tools.length + ')';
+            td.appendChild(label);
+
+            var container = document.createElement('div');
+            tools.forEach(function(t) {
+                var chip = document.createElement('span');
+                chip.className = 'tool-chip';
+                var chipIcon = document.createElement('i');
+                chipIcon.className = 'bi bi-wrench';
+                chip.appendChild(chipIcon);
+                chip.appendChild(document.createTextNode(t.name || t));
+                if (t.description) chip.title = t.description;
+                container.appendChild(chip);
+            });
+            td.appendChild(container);
+        })
+        .catch(function (err) {
+            td.textContent = 'Araclar yuklenemedi / Failed to load tools: ' + err.message;
+            td.className = 'text-danger';
+        });
+    }
+
+    /* ── Check server availability ───────────────────────────── */
+    function checkServer(serverName) {
+        var spinner = document.getElementById('spinner-' + serverName);
+        var statusEl = document.getElementById('status-' + serverName);
+        if (spinner) spinner.style.display = 'inline-block';
+
+        fetch('/api/mcp/servers/' + encodeURIComponent(serverName) + '/check', {
+            method: 'POST'
+        })
+        .then(function(r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function(data) {
+            if (spinner) spinner.style.display = 'none';
+            if (data.available) {
+                if (window.BTADashboard && window.BTADashboard.showToast) {
+                    window.BTADashboard.showToast(serverName + ': ' + data.message, 'success');
+                }
+            } else {
+                if (window.BTADashboard && window.BTADashboard.showToast) {
+                    window.BTADashboard.showToast(serverName + ': ' + data.message, 'warning');
+                }
+            }
+        })
+        .catch(function(err) {
+            if (spinner) spinner.style.display = 'none';
+            if (window.BTADashboard && window.BTADashboard.showToast) {
+                window.BTADashboard.showToast('Kontrol basarisiz / Check failed: ' + err.message, 'error');
+            }
+        });
+    }
+
+    /* ── Check all servers ───────────────────────────────────── */
+    function checkAll() {
+        var rows = document.querySelectorAll('#serversBody tr[data-server-name]');
+        rows.forEach(function(row) {
+            var name = row.getAttribute('data-server-name');
+            if (name) {
+                checkServer(name);
+            }
+        });
+    }
+
+    /* ── Show install info modal ─────────────────────────────── */
+    function showInstallInfo(serverName, installCmd, installNote) {
+        var body = document.getElementById('installInfoBody');
+        body.innerHTML = '';
+
+        var h = document.createElement('h6');
+        h.textContent = serverName;
+        body.appendChild(h);
+
+        if (installCmd) {
+            var cmdLabel = document.createElement('strong');
+            cmdLabel.className = 'small';
+            cmdLabel.textContent = 'Kurulum komutu / Install command:';
+            body.appendChild(cmdLabel);
+
+            var code = document.createElement('code');
+            code.className = 'd-block p-2 mt-1 mb-2';
+            code.style.background = 'var(--code-bg)';
+            code.style.borderRadius = '4px';
+            code.style.fontSize = '0.82rem';
+            code.style.wordBreak = 'break-all';
+            code.textContent = installCmd;
+            body.appendChild(code);
+        }
+
+        if (installNote) {
+            var note = document.createElement('small');
+            note.className = 'text-muted';
+            note.innerHTML = '<i class="bi bi-info-circle me-1"></i>' + installNote;
+            body.appendChild(note);
+        }
+
+        var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('installInfoModal'));
+        modal.show();
+    }
+
+    /* ── Add server ──────────────────────────────────────────── */
+    document.getElementById('addServerBtn').addEventListener('click', function () {
+        var name = document.getElementById('serverName').value.trim();
+        var transport = document.getElementById('serverTransport').value;
+        if (!name) {
+            document.getElementById('serverName').focus();
+            return;
+        }
+
+        var payload = {
+            name: name,
+            transport: transport,
+            description: document.getElementById('serverDescription').value.trim()
+        };
+
+        if (transport === 'stdio') {
+            payload.command = document.getElementById('serverCommand').value.trim();
+            var argsText = document.getElementById('serverArgs').value.trim();
+            if (argsText) {
+                payload.args = argsText.split('\n').map(function (a) { return a.trim(); }).filter(Boolean);
+            }
+        } else {
+            payload.url = document.getElementById('serverUrl').value.trim();
+            var token = document.getElementById('serverToken').value.trim();
+            if (token) payload.token = token;
+        }
+
+        var envText = document.getElementById('serverEnv').value.trim();
+        if (envText) {
+            try {
+                payload.env = JSON.parse(envText);
+            } catch (ex) {
+                if (window.BTADashboard && window.BTADashboard.showToast) {
+                    window.BTADashboard.showToast('Gecersiz JSON / Invalid JSON in environment variables', 'error');
+                }
+                return;
+            }
+        }
+
+        var btn = document.getElementById('addServerBtn');
+        btn.disabled = true;
+        btn.textContent = 'Ekleniyor... / Adding...';
+
+        fetch('/api/mcp/servers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function () {
+            btn.disabled = false;
+            btn.textContent = 'Sunucu Ekle / Add Server';
+            var modalEl = document.getElementById('addServerModal');
+            var modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+            window.location.reload();
+        })
+        .catch(function (err) {
+            btn.disabled = false;
+            btn.textContent = 'Sunucu Ekle / Add Server';
+            if (window.BTADashboard && window.BTADashboard.showToast) {
+                window.BTADashboard.showToast('Basarisiz / Failed: ' + err.message, 'error');
+            }
+        });
+    });
+
+    function connectServer(serverName) {
+        fetch('/api/mcp/servers/' + encodeURIComponent(serverName) + '/connect', { method: 'POST' })
+        .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function () {
+            if (window.BTADashboard && window.BTADashboard.showToast) {
+                window.BTADashboard.showToast(serverName + ' sunucusuna baglandi / Connected to ' + serverName, 'success');
+            }
+            window.location.reload();
+        })
+        .catch(function (err) {
+            if (window.BTADashboard && window.BTADashboard.showToast) {
+                window.BTADashboard.showToast('Baglanti basarisiz / Connection failed: ' + err.message, 'error');
+            }
+        });
+    }
+
+    function disconnectServer(serverName) {
+        fetch('/api/mcp/servers/' + encodeURIComponent(serverName) + '/disconnect', { method: 'POST' })
+        .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function () {
+            if (window.BTADashboard && window.BTADashboard.showToast) {
+                window.BTADashboard.showToast(serverName + ' baglantisi kesildi / Disconnected from ' + serverName, 'success');
+            }
+            window.location.reload();
+        })
+        .catch(function (err) {
+            if (window.BTADashboard && window.BTADashboard.showToast) {
+                window.BTADashboard.showToast('Baglanti kesme basarisiz / Disconnect failed: ' + err.message, 'error');
+            }
+        });
+    }
+
+    function deleteServer(serverName) {
+        if (!confirm('"' + serverName + '" MCP sunucusu silinsin mi? Bu islem geri alinamaz.\nDelete MCP server "' + serverName + '"? This cannot be undone.')) return;
+
+        fetch('/api/mcp/servers/' + encodeURIComponent(serverName), { method: 'DELETE' })
+        .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function () { window.location.reload(); })
+        .catch(function (err) {
+            if (window.BTADashboard && window.BTADashboard.showToast) {
+                window.BTADashboard.showToast('Silme basarisiz / Delete failed: ' + err.message, 'error');
+            }
+        });
+    }
+
+    function listTools(serverName) {
+        var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('toolsModal'));
+        var body = document.getElementById('toolsModalBody');
+        body.textContent = serverName + ' icin araclar yukleniyor... / Loading tools for ' + serverName + '...';
+        modal.show();
+
+        fetch('/api/mcp/servers/' + encodeURIComponent(serverName) + '/tools')
+        .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function (data) {
+            while (body.firstChild) body.removeChild(body.firstChild);
+            var tools = data.tools || [];
+            if (tools.length === 0) {
+                body.textContent = 'Arac bulunamadi. Sunucu bagli mi? / No tools discovered. Is the server connected?';
+                return;
+            }
+            var list = document.createElement('div');
+            list.className = 'list-group';
+            tools.forEach(function (t) {
+                var item = document.createElement('div');
+                item.className = 'list-group-item';
+                item.style.backgroundColor = 'var(--bg-tertiary)';
+                item.style.borderColor = 'var(--border-color)';
+                item.style.color = 'var(--text-primary)';
+
+                var nameEl = document.createElement('strong');
+                nameEl.textContent = t.name || 'Unknown';
+                item.appendChild(nameEl);
+
+                if (t.description) {
+                    item.appendChild(document.createElement('br'));
+                    var descEl = document.createElement('small');
+                    descEl.className = 'text-muted';
+                    descEl.textContent = t.description;
+                    item.appendChild(descEl);
+                }
+                list.appendChild(item);
+            });
+            body.appendChild(list);
+        })
+        .catch(function (err) {
+            while (body.firstChild) body.removeChild(body.firstChild);
+            var errDiv = document.createElement('div');
+            errDiv.className = 'text-danger py-3';
+            errDiv.textContent = 'Hata / Error: ' + err.message;
+            body.appendChild(errDiv);
+        });
+    }
+
+    /* ── Dynamic refresh via API ─────────────────────────────── */
+    function loadServers() {
+        fetch('/api/mcp/servers')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            // Simple reload -- the server-rendered table already has grouping
+            window.location.reload();
+        })
+        .catch(function(err) {
+            if (window.BTADashboard && window.BTADashboard.showToast) {
+                window.BTADashboard.showToast('Yenileme basarisiz / Failed to refresh: ' + err.message, 'error');
+            }
+        });
+    }
+
+    /* ── Refresh live status on page load ────────────────────── */
+    function refreshLiveStatus() {
+        fetch('/api/mcp/servers')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var servers = data.servers || [];
+            var connectedCount = 0;
+            servers.forEach(function(srv) {
+                var ls = srv.live_status || {};
+                var isConnected = ls.connected === true;
+                if (isConnected) connectedCount++;
+
+                var row = document.querySelector('tr[data-server-name="' + srv.name + '"]');
+                if (!row) return;
+
+                var statusEl = document.getElementById('status-' + srv.name);
+                if (statusEl && isConnected) {
+                    statusEl.className = 'status-badge connected';
+                    // Clear and rebuild safely
+                    while (statusEl.firstChild) statusEl.removeChild(statusEl.firstChild);
+                    var dot = document.createElement('span');
+                    dot.className = 'status-dot-lg connected';
+                    statusEl.appendChild(dot);
+                    statusEl.appendChild(document.createTextNode('Bagli / Connected'));
+                }
+
+                // Update tool count
+                if (isConnected && ls.tool_count) {
+                    var toolCell = row.querySelectorAll('td')[4];
+                    if (toolCell) {
+                        var badge = toolCell.querySelector('.badge');
+                        if (badge) badge.textContent = ls.tool_count;
+                    }
+                }
+
+                // Update action buttons: swap connect for disconnect
+                var actionsCell = row.querySelectorAll('td')[5];
+                if (actionsCell) {
+                    var connectBtn = actionsCell.querySelector('.server-connect-btn');
+                    var disconnectBtn = actionsCell.querySelector('.server-disconnect-btn');
+                    if (isConnected && connectBtn && !disconnectBtn) {
+                        var newBtn = document.createElement('button');
+                        newBtn.className = 'btn btn-sm btn-outline-secondary server-disconnect-btn';
+                        newBtn.title = 'Baglanti kes / Disconnect';
+                        newBtn.setAttribute('data-server-name', srv.name);
+                        var icon = document.createElement('i');
+                        icon.className = 'bi bi-pause-circle';
+                        newBtn.appendChild(icon);
+                        connectBtn.replaceWith(newBtn);
+                    }
+                }
+
+                // Add toggle tools chevron if connected
+                if (isConnected) {
+                    var chevronCell = row.querySelectorAll('td')[0];
+                    if (chevronCell && !chevronCell.querySelector('.toggle-tools-btn')) {
+                        var toggleBtn = document.createElement('button');
+                        toggleBtn.className = 'btn btn-sm btn-ghost p-0 toggle-tools-btn';
+                        toggleBtn.title = 'Araclari goster / Show tools';
+                        var chevIcon = document.createElement('i');
+                        chevIcon.className = 'bi bi-chevron-right';
+                        toggleBtn.appendChild(chevIcon);
+                        chevronCell.appendChild(toggleBtn);
+                    }
+                }
+            });
+
+            // Update connected counter
+            var counterEl = document.getElementById('connectedCount');
+            if (counterEl) counterEl.textContent = connectedCount;
+        })
+        .catch(function() {});
+    }
+
+    // Run on page load
+    refreshLiveStatus();
+
+    return {
+        loadServers: loadServers,
+        checkAll: checkAll
+    };
+})();
+</script>
+{% endblock %}

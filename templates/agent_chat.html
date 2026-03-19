@@ -1,0 +1,1873 @@
+{# Agent Chat Interface - Real-time AI Agent Communication #}
+{# Enhanced SOC Analyst Experience - Structured Output, Rich Rendering #}
+{% extends "base.html" %}
+
+{% block title %}Agent Chat - Blue Team Assistant{% endblock %}
+{% block page_title %}Agent Chat{% endblock %}
+{% block page_subtitle %}<span class="page-subtitle">AI Security Analyst</span>{% endblock %}
+
+{% block header_actions %}
+<button class="btn btn-sm btn-accent" onclick="AgentChat.newSession()">
+    <i class="bi bi-plus-lg me-1"></i>New Chat
+</button>
+<button class="btn btn-sm btn-outline-secondary" id="exportBtn" onclick="AgentChat.exportSession()" style="display:none;" title="Export investigation">
+    <i class="bi bi-download me-1"></i>Export
+</button>
+<select id="sessionSelect" class="form-select form-select-sm" style="width:auto;min-width:180px;" onchange="AgentChat.switchSession(this.value)">
+    <option value="">-- New Session --</option>
+</select>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* ===== MCP Status Panel ===== */
+    .mcp-stat-mini {
+        flex: 1;
+        text-align: center;
+        padding: 0.3rem 0.25rem;
+        background: var(--bg-primary);
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+    }
+    .mcp-stat-val {
+        display: block;
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--color-success);
+        line-height: 1.2;
+    }
+    .mcp-stat-lbl {
+        display: block;
+        font-size: 0.6rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .mcp-srv-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.3rem 0.4rem;
+        border-radius: 5px;
+        font-size: 0.75rem;
+        transition: background 0.15s;
+    }
+    .mcp-srv-item:hover {
+        background: var(--hover-overlay);
+    }
+    .mcp-srv-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    .mcp-srv-dot.online { background: #10b981; box-shadow: 0 0 6px rgba(16,185,129,0.4); }
+    .mcp-srv-dot.offline { background: #64748b; }
+    .mcp-srv-dot.error { background: #f43f5e; }
+    .mcp-srv-name {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--text-secondary);
+    }
+    .mcp-srv-tools {
+        font-size: 0.65rem;
+        color: var(--text-muted);
+        flex-shrink: 0;
+    }
+
+    /* ===== Full-width override for chat page ===== */
+    .page-content {
+        max-width: 100% !important;
+        padding: 0.75rem !important;
+    }
+
+    /* ===== Layout ===== */
+    .chat-container {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 150px);
+        min-height: 400px;
+    }
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        scroll-behavior: smooth;
+    }
+
+    /* ===== Bubbles ===== */
+    .chat-bubble {
+        max-width: 82%;
+        padding: 0.75rem 1rem;
+        border-radius: 12px;
+        font-size: 0.9rem;
+        line-height: 1.6;
+        word-wrap: break-word;
+    }
+    .chat-bubble-user {
+        align-self: flex-end;
+        background: var(--color-accent);
+        color: #fff;
+        border-bottom-right-radius: 4px;
+    }
+    .chat-bubble-agent {
+        align-self: flex-start;
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        border: 1px solid var(--border-color);
+        border-bottom-left-radius: 4px;
+        max-width: 90%;
+    }
+    .chat-bubble-system {
+        align-self: center;
+        background: transparent;
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        text-align: center;
+        max-width: 90%;
+    }
+    .chat-bubble .bubble-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.25rem;
+        opacity: 0.7;
+    }
+    .chat-bubble pre {
+        background: var(--code-bg);
+        padding: 0.5rem;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        overflow-x: auto;
+        margin: 0.5rem 0 0 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    /* ===== Rich Markdown in Agent Bubbles ===== */
+    .chat-bubble-agent .agent-content h1,
+    .chat-bubble-agent .agent-content h2,
+    .chat-bubble-agent .agent-content h3 {
+        font-size: 1rem;
+        font-weight: 700;
+        margin: 0.8rem 0 0.3rem 0;
+        padding-bottom: 0.2rem;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--color-accent);
+    }
+    .chat-bubble-agent .agent-content h3 { font-size: 0.9rem; border-bottom: none; }
+    .chat-bubble-agent .agent-content ul,
+    .chat-bubble-agent .agent-content ol {
+        margin: 0.3rem 0;
+        padding-left: 1.2rem;
+    }
+    .chat-bubble-agent .agent-content li { margin-bottom: 0.15rem; }
+    .chat-bubble-agent .agent-content table {
+        width: 100%;
+        font-size: 0.8rem;
+        border-collapse: collapse;
+        margin: 0.5rem 0;
+    }
+    .chat-bubble-agent .agent-content table th {
+        background: var(--bg-secondary);
+        padding: 0.3rem 0.5rem;
+        text-align: left;
+        font-weight: 600;
+        border-bottom: 2px solid var(--border-color);
+        white-space: nowrap;
+    }
+    .chat-bubble-agent .agent-content table td {
+        padding: 0.25rem 0.5rem;
+        border-bottom: 1px solid var(--border-color);
+        vertical-align: top;
+    }
+    .chat-bubble-agent .agent-content table tr:hover td {
+        background: rgba(88,166,255,0.04);
+    }
+    .chat-bubble-agent .agent-content code {
+        background: var(--code-bg);
+        padding: 0.1rem 0.3rem;
+        border-radius: 3px;
+        font-size: 0.82rem;
+        font-family: 'Consolas', 'Monaco', monospace;
+    }
+    .chat-bubble-agent .agent-content strong { color: var(--color-accent); }
+    .chat-bubble-agent .agent-content blockquote {
+        border-left: 3px solid var(--color-accent);
+        margin: 0.4rem 0;
+        padding: 0.3rem 0.8rem;
+        background: rgba(88,166,255,0.05);
+        border-radius: 0 6px 6px 0;
+    }
+
+    /* ===== Verdict Badges ===== */
+    .verdict-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.3rem 0.7rem;
+        border-radius: 6px;
+        font-weight: 700;
+        font-size: 0.8rem;
+        letter-spacing: 0.5px;
+    }
+    .verdict-malicious { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+    .verdict-suspicious { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); }
+    .verdict-clean { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+    .verdict-info { background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3); }
+
+    /* ===== Input Area ===== */
+    .chat-input-area {
+        padding: 1rem;
+        border-top: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        border-radius: 0 0 8px 8px;
+    }
+    .chat-input-area textarea {
+        resize: none;
+        background: var(--bg-tertiary);
+        border-color: var(--border-color);
+        color: var(--text-primary);
+    }
+    .chat-input-area textarea:focus {
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 0.15rem rgba(88,166,255,0.2);
+    }
+
+    /* ===== Phase Indicators ===== */
+    .phase-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.25rem 0.6rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        margin-bottom: 0.4rem;
+    }
+    .phase-thinking { background: rgba(88,166,255,0.15); color: var(--color-info); }
+    .phase-acting { background: rgba(245,158,11,0.15); color: var(--color-warning); }
+    .phase-observing { background: rgba(34,197,94,0.15); color: var(--color-success); }
+    .phase-dot {
+        width: 6px; height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+        animation: pulseDot 1.2s ease-in-out infinite;
+    }
+    @keyframes pulseDot {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.4; transform: scale(0.7); }
+    }
+
+    /* ===== Tool Call Blocks ===== */
+    .tool-call-block {
+        background: var(--code-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin: 0.4rem 0;
+        font-size: 0.8rem;
+        overflow: hidden;
+    }
+    .tool-call-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.4rem 0.75rem;
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.15s;
+    }
+    .tool-call-header:hover { background: rgba(88,166,255,0.05); }
+    .tool-call-header .tool-name { color: var(--color-accent); font-weight: 600; }
+    .tool-call-header .tool-status { font-size: 0.7rem; }
+    .tool-call-body {
+        display: none;
+        border-top: 1px solid var(--border-color);
+        padding: 0.5rem 0.75rem;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    .tool-call-body.show { display: block; }
+    .tool-call-body pre {
+        margin: 0;
+        font-size: 0.78rem;
+        background: transparent;
+        padding: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+    }
+
+    /* ===== IOC Chips ===== */
+    .ioc-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.15rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.78rem;
+        font-family: 'Consolas', monospace;
+        background: var(--code-bg);
+        border: 1px solid var(--border-color);
+        cursor: pointer;
+        transition: all 0.15s;
+        margin: 0.1rem;
+    }
+    .ioc-chip:hover { border-color: var(--color-accent); background: rgba(88,166,255,0.1); }
+    .ioc-chip .copy-icon { font-size: 0.65rem; opacity: 0.5; }
+    .ioc-chip.copied { border-color: var(--color-success); background: rgba(34,197,94,0.1); }
+    .ioc-chip.copied .copy-icon { opacity: 1; color: var(--color-success); }
+
+    /* ===== Progress Bar Enhanced ===== */
+    .investigation-progress {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        padding: 0.5rem 1rem;
+        background: var(--bg-tertiary);
+        border-bottom: 1px solid var(--border-color);
+        flex-wrap: wrap;
+    }
+    .investigation-progress .step-counter { font-weight: 600; color: var(--color-accent); }
+    .investigation-progress .elapsed { font-size: 0.72rem; color: var(--text-secondary); }
+    .investigation-progress .current-tool {
+        font-size: 0.72rem;
+        color: var(--color-warning);
+        max-width: 250px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .investigation-progress .progress-right { margin-left: auto; display: flex; align-items: center; gap: 0.5rem; }
+
+    /* ===== Live Tool Indicator ===== */
+    .live-tool-indicator {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.35rem 0.75rem;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border-color);
+        font-size: 0.78rem;
+        transition: opacity 0.3s;
+    }
+    .live-tool-indicator.d-none { display: none !important; }
+    .live-tool-indicator .lti-tool-name {
+        font-weight: 700;
+        color: var(--color-accent);
+        max-width: 220px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .live-tool-indicator .lti-elapsed {
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        font-family: 'Consolas', monospace;
+    }
+    .source-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.2rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 3px;
+        font-size: 0.62rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+    .source-badge-local { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.25); }
+    .source-badge-mcp { background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.25); }
+    .phase-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.1rem 0.45rem;
+        border-radius: 3px;
+        font-size: 0.62rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+    }
+    .phase-badge-think { background: rgba(88,166,255,0.15); color: var(--color-info); }
+    .phase-badge-act { background: rgba(245,158,11,0.15); color: var(--color-warning); }
+    .phase-badge-observe { background: rgba(34,197,94,0.15); color: var(--color-success); }
+    @keyframes spinnerRotate {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    .lti-spinner {
+        width: 12px; height: 12px;
+        border: 2px solid var(--border-color);
+        border-top-color: var(--color-accent);
+        border-radius: 50%;
+        animation: spinnerRotate 0.8s linear infinite;
+        flex-shrink: 0;
+    }
+
+    /* ===== Rich Tool Result Card ===== */
+    .tool-result-card {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        margin: 0.4rem 0;
+        overflow: hidden;
+    }
+    .tool-result-card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.45rem 0.75rem;
+        background: var(--bg-tertiary);
+        border-bottom: 1px solid var(--border-color);
+        cursor: pointer;
+        user-select: none;
+    }
+    .tool-result-card-header:hover { background: rgba(88,166,255,0.05); }
+    .tool-result-card-header .trc-left { display: flex; align-items: center; gap: 0.4rem; }
+    .tool-result-card-header .trc-right { display: flex; align-items: center; gap: 0.5rem; font-size: 0.7rem; color: var(--text-muted); }
+    .tool-result-card-header .trc-duration { font-family: 'Consolas', monospace; font-size: 0.68rem; }
+    .tool-result-card-body {
+        padding: 0.6rem 0.75rem;
+    }
+    .tool-result-card-body.collapsed { display: none; }
+    .tool-result-kv {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 0.2rem 0.6rem;
+        font-size: 0.78rem;
+    }
+    .tool-result-kv .kv-key {
+        color: var(--text-muted);
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .tool-result-kv .kv-val {
+        color: var(--text-primary);
+        word-break: break-word;
+    }
+    .tool-result-fallback pre {
+        margin: 0;
+        font-size: 0.76rem;
+        background: transparent;
+        padding: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 250px;
+        overflow-y: auto;
+    }
+
+    /* ===== Session Sidebar Enhanced ===== */
+    .session-meta-badges { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 2px; }
+    .session-meta-badge {
+        font-size: 0.58rem;
+        padding: 0.05rem 0.3rem;
+        border-radius: 3px;
+        background: var(--bg-tertiary);
+        color: var(--text-muted);
+        border: 1px solid var(--border-color);
+    }
+
+    /* ===== Investigation Summary Card ===== */
+    .investigation-summary {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 1rem;
+        margin: 0.5rem 0;
+    }
+    .summary-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0.75rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .summary-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+    }
+    .summary-stat {
+        text-align: center;
+        padding: 0.5rem;
+        border-radius: 8px;
+        background: var(--bg-tertiary);
+    }
+    .summary-stat .stat-value { font-size: 1.3rem; font-weight: 700; }
+    .summary-stat .stat-label { font-size: 0.68rem; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.5px; }
+    .summary-tools {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+        margin-top: 0.5rem;
+    }
+    .summary-tools .tool-tag {
+        padding: 0.15rem 0.4rem;
+        border-radius: 4px;
+        font-size: 0.68rem;
+        background: rgba(88,166,255,0.1);
+        color: var(--color-accent);
+        border: 1px solid rgba(88,166,255,0.2);
+    }
+
+    /* ===== Approval Overlay ===== */
+    .approval-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.6);
+        z-index: 1050;
+        align-items: center;
+        justify-content: center;
+    }
+    .approval-overlay.show { display: flex; }
+    .approval-dialog {
+        background: var(--bg-secondary);
+        border: 1px solid var(--color-warning);
+        border-radius: 12px;
+        padding: 1.5rem;
+        max-width: 500px;
+        width: 90%;
+        box-shadow: 0 0 30px rgba(245,158,11,0.15);
+    }
+    .approval-dialog h6 { color: var(--color-warning); }
+
+    /* ===== Playbook Sidebar ===== */
+    .playbook-item {
+        transition: all 0.15s;
+        border-left: 3px solid transparent !important;
+    }
+    .playbook-item:hover { border-left-color: var(--color-accent) !important; }
+    .playbook-item.selected {
+        border-left-color: var(--color-accent) !important;
+        background: rgba(88,166,255,0.08) !important;
+    }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 768px) {
+        .chat-container { height: calc(100vh - 200px); }
+        .chat-bubble { max-width: 95%; }
+        .chat-bubble-agent { max-width: 95%; }
+        .summary-stats { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* ===== Copy Toast ===== */
+    .copy-toast {
+        position: fixed;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--color-success);
+        color: #fff;
+        padding: 0.4rem 0.8rem;
+        border-radius: 6px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        z-index: 2000;
+        opacity: 0;
+        transition: opacity 0.3s;
+        pointer-events: none;
+    }
+    .copy-toast.show { opacity: 1; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+    <div class="col-lg-9">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><img src="/static/img/logo.svg" alt="" style="width:22px;height:22px;margin-right:8px;vertical-align:middle;filter:drop-shadow(0 0 4px rgba(0,212,255,0.5));">Cyan Agent</h6>
+                <div class="d-flex align-items-center gap-2">
+                    <span id="elapsedTime" class="text-muted" style="font-size:0.72rem;"></span>
+                    <div id="connectionStatus">
+                        <span class="badge bg-secondary"><i class="bi bi-circle-fill me-1" style="font-size:0.45rem;"></i>Disconnected</span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="investigationProgress" class="investigation-progress d-none">
+                <i class="bi bi-activity"></i>
+                <span>Step</span>
+                <span class="step-counter" id="stepCounter">0 / 0</span>
+                <div class="progress flex-grow-1" style="height:4px;max-width:200px;">
+                    <div id="stepProgressBar" class="progress-bar bg-accent" style="width:0%"></div>
+                </div>
+                <span id="currentPhaseBadge"></span>
+                <div class="progress-right">
+                    <span class="current-tool" id="currentToolName"></span>
+                    <span class="elapsed" id="progressElapsed"></span>
+                </div>
+            </div>
+            <div id="liveToolIndicator" class="live-tool-indicator d-none">
+                <div class="lti-spinner"></div>
+                <span id="ltiSourceBadge"></span>
+                <span class="lti-tool-name" id="ltiToolName"></span>
+                <span id="ltiPhaseBadge" class="phase-badge phase-badge-act"><i class="bi bi-gear-wide-connected" style="font-size:0.58rem;"></i> ACT</span>
+                <span class="lti-elapsed" id="ltiElapsed">0.0s</span>
+            </div>
+
+            <div class="chat-container">
+                <div id="chatMessages" class="chat-messages">
+                    <div class="chat-bubble chat-bubble-system">
+                        <i class="bi bi-shield-lock me-1"></i>
+                        Blue Team Agent ready. Describe a security investigation goal, select a playbook, or use quick actions.
+                    </div>
+                </div>
+
+                <div class="chat-input-area">
+                    <div class="input-group">
+                        <textarea id="chatInput" class="form-control" rows="2"
+                            placeholder="e.g. Investigate IP 45.33.32.156 for C2 activity..."
+                            onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();AgentChat.send();}"></textarea>
+                        <button class="btn btn-accent" onclick="AgentChat.send()" id="sendBtn" title="Send (Enter)">
+                            <i class="bi bi-send-fill"></i>
+                        </button>
+                    </div>
+                    <div class="d-flex justify-content-between mt-2">
+                        <small class="text-muted"><kbd>Enter</kbd> send &middot; <kbd>Shift+Enter</kbd> newline</small>
+                        <small class="text-muted" id="typingIndicator"></small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Sidebar -->
+    <div class="col-lg-3">
+        <!-- Playbooks -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center py-2">
+                <h6 class="mb-0" style="font-size:0.85rem;"><i class="bi bi-journal-code me-2 text-accent"></i>Playbooks</h6>
+                <span class="badge bg-accent" id="playbookCountBadge" style="font-size:0.65rem;">0</span>
+            </div>
+            <div class="card-body p-0" style="max-height:280px;overflow-y:auto;">
+                <div id="playbooksList" class="list-group list-group-flush">
+                    <div class="text-center text-muted py-2"><small>Loading...</small></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card mt-2">
+            <div class="card-header py-2">
+                <h6 class="mb-0" style="font-size:0.85rem;"><i class="bi bi-lightning me-2 text-accent"></i>Quick Actions</h6>
+            </div>
+            <div class="card-body p-2">
+                <div class="d-grid gap-1">
+                    <button class="btn btn-outline-secondary btn-sm text-start" onclick="AgentChat.quickAction('Investigate the IOC: ')">
+                        <i class="bi bi-search me-2 text-info"></i>IOC Investigation
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm text-start" onclick="AgentChat.quickAction('Analyze the malware file at: ')">
+                        <i class="bi bi-bug me-2 text-danger"></i>Malware Analysis
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm text-start" onclick="AgentChat.quickAction('Analyze the phishing email at: ')">
+                        <i class="bi bi-envelope-exclamation me-2 text-warning"></i>Email Forensics
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm text-start" onclick="AgentChat.quickAction('Hunt for threats matching: ')">
+                        <i class="bi bi-binoculars me-2 text-success"></i>Threat Hunt
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm text-start" onclick="AgentChat.quickAction('Triage the alert: ')">
+                        <i class="bi bi-bell me-2 text-accent"></i>Alert Triage
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm text-start" onclick="AgentChat.quickAction('Generate detection rules for: ')">
+                        <i class="bi bi-shield-check me-2 text-accent"></i>Detection Rules
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MCP Server Status -->
+        <div class="card mt-2">
+            <div class="card-header d-flex justify-content-between align-items-center py-2">
+                <h6 class="mb-0" style="font-size:0.85rem;"><i class="bi bi-hdd-network me-2 text-accent"></i>System Status</h6>
+                <button class="btn btn-sm p-0 border-0" onclick="AgentChat.refreshMCPStatus()" title="Refresh status" style="color:var(--text-secondary);font-size:0.8rem;">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+            <div class="card-body p-2" id="mcpStatusPanel">
+                <div class="d-flex align-items-center gap-2 mb-2">
+                    <div class="mcp-stat-mini">
+                        <span class="mcp-stat-val" id="mcpOnlineCount">-</span>
+                        <span class="mcp-stat-lbl">Online</span>
+                    </div>
+                    <div class="mcp-stat-mini">
+                        <span class="mcp-stat-val text-muted" id="mcpOfflineCount">-</span>
+                        <span class="mcp-stat-lbl">Offline</span>
+                    </div>
+                    <div class="mcp-stat-mini">
+                        <span class="mcp-stat-val text-info" id="mcpToolCount">-</span>
+                        <span class="mcp-stat-lbl">Tools</span>
+                    </div>
+                </div>
+                <div id="mcpServerList" style="max-height:180px;overflow-y:auto;">
+                    <div class="text-center text-muted py-2"><small>Loading...</small></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tools -->
+        <div class="card mt-2">
+            <div class="card-header d-flex justify-content-between align-items-center py-2">
+                <h6 class="mb-0" style="font-size:0.85rem;"><i class="bi bi-tools me-2 text-accent"></i>Tools</h6>
+                <span class="badge bg-accent" id="toolCountBadge" style="font-size:0.65rem;">0</span>
+            </div>
+            <div class="card-body p-0" style="max-height:200px;overflow-y:auto;">
+                <div id="toolsList" class="list-group list-group-flush">
+                    <div class="text-center text-muted py-3"><small>Loading tools...</small></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Approval Dialog -->
+<div id="approvalOverlay" class="approval-overlay">
+    <div class="approval-dialog">
+        <h6><i class="bi bi-exclamation-triangle-fill me-2"></i>Agent Needs Approval</h6>
+        <p class="text-muted mb-2" style="font-size:0.85rem;">The agent wants to perform a potentially impactful action:</p>
+        <div id="approvalDetail" class="tool-call-block" style="padding:0.75rem;"></div>
+        <div class="d-flex gap-2 justify-content-end mt-3">
+            <button class="btn btn-outline-secondary btn-sm" onclick="AgentChat.respondApproval(false)">
+                <i class="bi bi-x-lg me-1"></i>Reject
+            </button>
+            <button class="btn btn-accent btn-sm" onclick="AgentChat.respondApproval(true)">
+                <i class="bi bi-check-lg me-1"></i>Approve
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Copy Toast -->
+<div id="copyToast" class="copy-toast"><i class="bi bi-check-lg me-1"></i>Copied!</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var AgentChat = (function() {
+    var sessionId = null;
+    var ws = null;
+    var pendingApprovalId = null;
+    var maxSteps = 0;
+    var currentStep = 0;
+    var startTime = null;
+    var elapsedTimer = null;
+    var toolCallCounter = 0;
+    var investigationData = { tools_used: [], iocs_found: [], steps: [], mcp_tools: [] };
+    var currentPhase = 'think';
+    var toolStartTime = null;
+    var toolElapsedTimer = null;
+
+    // ===== Tool Source Detection =====
+    function isToolMCP(toolName) {
+        if (!toolName) return false;
+        return toolName.indexOf('mcp_') === 0 || toolName.indexOf('mcp:') === 0 || toolName.indexOf('mcp.') === 0;
+    }
+
+    function getMCPServerName(toolName) {
+        if (!toolName) return '';
+        var parts = toolName.replace(/^mcp[_:.]/, '').split(/[_:.]/);
+        return parts.length > 1 ? parts[0] : '';
+    }
+
+    function makeSourceBadge(toolName) {
+        if (isToolMCP(toolName)) {
+            var srv = getMCPServerName(toolName);
+            return '<span class="source-badge source-badge-mcp"><i class="bi bi-plug" style="font-size:0.55rem;"></i>MCP' + (srv ? ':' + esc(srv) : '') + '</span>';
+        }
+        return '<span class="source-badge source-badge-local"><i class="bi bi-house" style="font-size:0.55rem;"></i>LOCAL</span>';
+    }
+
+    function makePhaseBadge(phase) {
+        var map = {
+            'think': { cls: 'phase-badge-think', icon: 'bi-lightbulb', label: 'THINK' },
+            'act':   { cls: 'phase-badge-act',   icon: 'bi-gear-wide-connected', label: 'ACT' },
+            'observe': { cls: 'phase-badge-observe', icon: 'bi-eye', label: 'OBSERVE' }
+        };
+        var p = map[phase] || map['think'];
+        return '<span class="phase-badge ' + p.cls + '"><i class="bi ' + p.icon + '" style="font-size:0.58rem;"></i> ' + p.label + '</span>';
+    }
+
+    function startToolTimer() {
+        toolStartTime = Date.now();
+        if (toolElapsedTimer) clearInterval(toolElapsedTimer);
+        toolElapsedTimer = setInterval(function() {
+            var el = document.getElementById('ltiElapsed');
+            if (el && toolStartTime) {
+                var ms = Date.now() - toolStartTime;
+                el.textContent = (ms / 1000).toFixed(1) + 's';
+            }
+        }, 100);
+    }
+
+    function stopToolTimer() {
+        if (toolElapsedTimer) { clearInterval(toolElapsedTimer); toolElapsedTimer = null; }
+        var duration = toolStartTime ? ((Date.now() - toolStartTime) / 1000).toFixed(1) + 's' : '';
+        toolStartTime = null;
+        return duration;
+    }
+
+    function showLiveToolIndicator(toolName, phase) {
+        var el = document.getElementById('liveToolIndicator');
+        if (!el) return;
+        el.classList.remove('d-none');
+        document.getElementById('ltiToolName').textContent = toolName || '';
+        document.getElementById('ltiSourceBadge').innerHTML = makeSourceBadge(toolName);
+        var phaseKey = (phase === 'thinking' || phase === 'think') ? 'think' : (phase === 'observing' || phase === 'observe') ? 'observe' : 'act';
+        document.getElementById('ltiPhaseBadge').innerHTML = makePhaseBadge(phaseKey).replace(/^<span[^>]*>/, '').replace(/<\/span>$/, '');
+        document.getElementById('ltiPhaseBadge').className = 'phase-badge phase-badge-' + phaseKey;
+        startToolTimer();
+    }
+
+    function hideLiveToolIndicator() {
+        var el = document.getElementById('liveToolIndicator');
+        if (el) el.classList.add('d-none');
+        stopToolTimer();
+    }
+
+    // ===== Rich Tool Result Rendering =====
+    function renderToolResultRich(toolName, resultData) {
+        var parsed = null;
+        if (typeof resultData === 'string') {
+            try { parsed = JSON.parse(resultData); } catch(e) { parsed = null; }
+        } else if (typeof resultData === 'object' && resultData !== null) {
+            parsed = resultData;
+        }
+
+        if (!parsed || typeof parsed !== 'object') {
+            return '<div class="tool-result-fallback"><pre>' + esc(String(resultData || '')) + '</pre></div>';
+        }
+
+        var lowerName = (toolName || '').toLowerCase();
+        var html = '';
+
+        // investigate_ioc
+        if (lowerName.indexOf('investigate_ioc') !== -1 || lowerName.indexOf('ioc') !== -1) {
+            html = renderIOCResult(parsed);
+            if (html) return html;
+        }
+        // analyze_malware
+        if (lowerName.indexOf('malware') !== -1 || lowerName.indexOf('analyze_malware') !== -1) {
+            html = renderMalwareResult(parsed);
+            if (html) return html;
+        }
+
+        // Generic: show key fields nicely
+        return renderGenericResult(parsed);
+    }
+
+    function renderIOCResult(d) {
+        var score = d.threat_score !== undefined ? d.threat_score : (d.score !== undefined ? d.score : null);
+        var verdict = d.verdict || d.classification || '';
+        var sources = d.sources_flagged || d.flagged_sources || d.sources || null;
+        if (score === null && !verdict) return '';
+
+        var scoreColor = score >= 70 ? '#ef4444' : score >= 40 ? '#f59e0b' : '#22c55e';
+        var html = '<div class="tool-result-kv">';
+        if (score !== null) html += '<span class="kv-key">Threat Score</span><span class="kv-val" style="color:' + scoreColor + ';font-weight:700;font-size:0.95rem;">' + esc(String(score)) + '/100</span>';
+        if (verdict) html += '<span class="kv-key">Verdict</span><span class="kv-val"><span class="verdict-badge verdict-' + (detectVerdict(verdict) || 'info') + '" style="font-size:0.72rem;">' + esc(verdict.toUpperCase()) + '</span></span>';
+        if (typeof sources === 'number') html += '<span class="kv-key">Sources Flagged</span><span class="kv-val">' + sources + '</span>';
+        else if (Array.isArray(sources)) html += '<span class="kv-key">Sources Flagged</span><span class="kv-val">' + sources.length + ' (' + esc(sources.join(', ')) + ')</span>';
+        // Show remaining keys
+        var skip = ['threat_score','score','verdict','classification','sources_flagged','flagged_sources','sources'];
+        Object.keys(d).forEach(function(k) {
+            if (skip.indexOf(k) === -1) {
+                var v = d[k];
+                if (typeof v === 'object') v = JSON.stringify(v);
+                html += '<span class="kv-key">' + esc(k) + '</span><span class="kv-val">' + esc(String(v)).substring(0, 200) + '</span>';
+            }
+        });
+        html += '</div>';
+        return html;
+    }
+
+    function renderMalwareResult(d) {
+        var verdict = d.verdict || d.classification || '';
+        var score = d.score !== undefined ? d.score : (d.threat_score !== undefined ? d.threat_score : null);
+        var peInfo = d.pe_info || d.pe_summary || d.pe || null;
+        if (!verdict && score === null) return '';
+
+        var html = '<div class="tool-result-kv">';
+        if (verdict) html += '<span class="kv-key">Verdict</span><span class="kv-val"><span class="verdict-badge verdict-' + (detectVerdict(verdict) || 'info') + '" style="font-size:0.72rem;">' + esc(verdict.toUpperCase()) + '</span></span>';
+        if (score !== null) {
+            var scoreColor = score >= 70 ? '#ef4444' : score >= 40 ? '#f59e0b' : '#22c55e';
+            html += '<span class="kv-key">Score</span><span class="kv-val" style="color:' + scoreColor + ';font-weight:700;">' + esc(String(score)) + '</span>';
+        }
+        if (peInfo) {
+            if (typeof peInfo === 'object') {
+                Object.keys(peInfo).forEach(function(k) {
+                    html += '<span class="kv-key">PE: ' + esc(k) + '</span><span class="kv-val">' + esc(String(peInfo[k])).substring(0, 200) + '</span>';
+                });
+            } else {
+                html += '<span class="kv-key">PE Info</span><span class="kv-val">' + esc(String(peInfo)).substring(0, 300) + '</span>';
+            }
+        }
+        var skip = ['verdict','classification','score','threat_score','pe_info','pe_summary','pe'];
+        Object.keys(d).forEach(function(k) {
+            if (skip.indexOf(k) === -1) {
+                var v = d[k];
+                if (typeof v === 'object') v = JSON.stringify(v);
+                html += '<span class="kv-key">' + esc(k) + '</span><span class="kv-val">' + esc(String(v)).substring(0, 200) + '</span>';
+            }
+        });
+        html += '</div>';
+        return html;
+    }
+
+    function renderGenericResult(d) {
+        var keys = Object.keys(d);
+        if (keys.length === 0) return '<div class="tool-result-fallback"><pre>{}</pre></div>';
+        if (keys.length > 15) {
+            return '<div class="tool-result-fallback"><pre>' + esc(JSON.stringify(d, null, 2)) + '</pre></div>';
+        }
+        var html = '<div class="tool-result-kv">';
+        keys.forEach(function(k) {
+            var v = d[k];
+            var display = '';
+            if (v === null || v === undefined) display = '-';
+            else if (typeof v === 'object') display = JSON.stringify(v);
+            else display = String(v);
+            if (display.length > 250) display = display.substring(0, 250) + '...';
+            html += '<span class="kv-key">' + esc(k) + '</span><span class="kv-val">' + esc(display) + '</span>';
+        });
+        html += '</div>';
+        return html;
+    }
+
+    // ===== Utilities =====
+    function esc(str) {
+        var d = document.createElement('div');
+        d.textContent = str || '';
+        return d.innerHTML;
+    }
+
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(function() {
+            var toast = document.getElementById('copyToast');
+            toast.classList.add('show');
+            setTimeout(function() { toast.classList.remove('show'); }, 1200);
+        });
+    }
+
+    // ===== Markdown-like Rendering =====
+    function renderMarkdown(text) {
+        if (!text) return '';
+        var s = esc(text);
+
+        // Code blocks (triple backtick)
+        s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, function(m, lang, code) {
+            return '<pre><code>' + code.trim() + '</code></pre>';
+        });
+
+        // Inline code
+        s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+        // Headers
+        s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+        s = s.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+        s = s.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+        // Bold and Italic
+        s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+        // Tables (pipe-delimited)
+        s = s.replace(/((?:^\|.+\|$\n?)+)/gm, function(tableBlock) {
+            var rows = tableBlock.trim().split('\n');
+            if (rows.length < 2) return tableBlock;
+            var html = '<table>';
+            rows.forEach(function(row, idx) {
+                if (row.match(/^\|[\s\-:]+\|$/)) return; // separator row
+                var cells = row.split('|').filter(function(c, i, a) { return i > 0 && i < a.length - 1; });
+                var tag = idx === 0 ? 'th' : 'td';
+                if (idx === 0) html += '<thead>';
+                if (idx === 1) html += '</thead><tbody>';
+                html += '<tr>';
+                cells.forEach(function(cell) {
+                    html += '<' + tag + '>' + cell.trim() + '</' + tag + '>';
+                });
+                html += '</tr>';
+            });
+            html += '</tbody></table>';
+            return html;
+        });
+
+        // Blockquotes
+        s = s.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+
+        // Unordered lists
+        s = s.replace(/((?:^[\s]*[-*] .+$\n?)+)/gm, function(block) {
+            var items = block.trim().split('\n');
+            var html = '<ul>';
+            items.forEach(function(item) {
+                html += '<li>' + item.replace(/^\s*[-*] /, '') + '</li>';
+            });
+            html += '</ul>';
+            return html;
+        });
+
+        // Ordered lists
+        s = s.replace(/((?:^\d+\. .+$\n?)+)/gm, function(block) {
+            var items = block.trim().split('\n');
+            var html = '<ol>';
+            items.forEach(function(item) {
+                html += '<li>' + item.replace(/^\d+\. /, '') + '</li>';
+            });
+            html += '</ol>';
+            return html;
+        });
+
+        // IOC auto-detection: IP addresses
+        s = s.replace(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/g, function(ip) {
+            return '<span class="ioc-chip" onclick="AgentChat.copyIOC(\'' + ip + '\')" title="Click to copy"><i class="bi bi-clipboard copy-icon"></i>' + ip + '</span>';
+        });
+
+        // IOC auto-detection: SHA256 hashes
+        s = s.replace(/\b([a-fA-F0-9]{64})\b/g, function(hash) {
+            return '<span class="ioc-chip" onclick="AgentChat.copyIOC(\'' + hash + '\')" title="Click to copy SHA256"><i class="bi bi-clipboard copy-icon"></i>' + hash.substring(0,16) + '...' + '</span>';
+        });
+
+        // IOC auto-detection: SHA1 hashes
+        s = s.replace(/\b([a-fA-F0-9]{40})\b/g, function(hash) {
+            return '<span class="ioc-chip" onclick="AgentChat.copyIOC(\'' + hash + '\')" title="Click to copy SHA1"><i class="bi bi-clipboard copy-icon"></i>' + hash.substring(0,12) + '...' + '</span>';
+        });
+
+        // IOC auto-detection: CVEs
+        s = s.replace(/\b(CVE-\d{4}-\d{4,})\b/g, function(cve) {
+            return '<span class="ioc-chip" onclick="AgentChat.copyIOC(\'' + cve + '\')" title="Click to copy CVE"><i class="bi bi-clipboard copy-icon"></i>' + cve + '</span>';
+        });
+
+        // Line breaks (preserve newlines)
+        s = s.replace(/\n/g, '<br>');
+
+        // Clean up extra <br> around block elements
+        s = s.replace(/(<\/(?:h[123]|ul|ol|table|pre|blockquote)>)<br>/g, '$1');
+        s = s.replace(/<br>(<(?:h[123]|ul|ol|table|pre|blockquote))/g, '$1');
+
+        return s;
+    }
+
+    // ===== Verdict Detection =====
+    function detectVerdict(text) {
+        if (!text) return null;
+        var lower = text.toLowerCase();
+        if (lower.match(/\b(malicious|zararli|kotu|infected|trojan|ransomware|backdoor)\b/)) return 'malicious';
+        if (lower.match(/\b(suspicious|supheli|potentially|anomal|risk)\b/)) return 'suspicious';
+        if (lower.match(/\b(clean|temiz|benign|safe|legitimate|harmless)\b/)) return 'clean';
+        return null;
+    }
+
+    // ===== Timer =====
+    function startTimer() {
+        startTime = Date.now();
+        if (elapsedTimer) clearInterval(elapsedTimer);
+        elapsedTimer = setInterval(function() {
+            var elapsed = Math.floor((Date.now() - startTime) / 1000);
+            var m = Math.floor(elapsed / 60);
+            var s = elapsed % 60;
+            var timeStr = m > 0 ? m + 'm ' + s + 's' : s + 's';
+            var el = document.getElementById('progressElapsed');
+            if (el) el.textContent = timeStr;
+            var el2 = document.getElementById('elapsedTime');
+            if (el2) el2.textContent = timeStr;
+        }, 1000);
+    }
+
+    function stopTimer() {
+        if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+    }
+
+    var selectedPlaybook = null;
+
+    // ===== Init =====
+    function init() {
+        loadSessions();
+        loadTools();
+        loadPlaybooks();
+        checkOllamaHealth();
+    }
+
+    function checkOllamaHealth() {
+        fetch('/api/config/ollama-health')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.ollama_running) {
+                    addBubble(
+                        '<i class="bi bi-exclamation-triangle-fill text-warning me-1"></i>' +
+                        '<strong>Ollama is not running!</strong> The AI agent cannot function without an LLM.' +
+                        '<br>Start Ollama with: <code>ollama serve</code>' +
+                        '<br>Then pull a model: <code>ollama pull ' + esc(data.configured_model || 'llama3.1:8b') + '</code>',
+                        'system'
+                    );
+                } else if (!data.model_available) {
+                    var available = (data.available_models || []).join(', ') || 'none';
+                    addBubble(
+                        '<i class="bi bi-exclamation-circle-fill text-warning me-1"></i>' +
+                        '<strong>Model "' + esc(data.configured_model) + '" not found!</strong>' +
+                        '<br>Available models: ' + esc(available) +
+                        '<br>Pull it with: <code>ollama pull ' + esc(data.configured_model) + '</code>' +
+                        '<br>Or change the model in <a href="/settings">Settings</a>.',
+                        'system'
+                    );
+                }
+            })
+            .catch(function() {});
+    }
+
+    function loadTools() {
+        fetch('/api/agent/tools')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var tools = data.tools || [];
+                var container = document.getElementById('toolsList');
+                while (container.firstChild) container.removeChild(container.firstChild);
+                document.getElementById('toolCountBadge').textContent = tools.length;
+
+                var categories = {};
+                tools.forEach(function(t) {
+                    var cat = t.category || 'other';
+                    if (!categories[cat]) categories[cat] = [];
+                    categories[cat].push(t);
+                });
+
+                var catIcons = {
+                    'threat_intel': 'bi-globe', 'analysis': 'bi-search', 'detection': 'bi-shield-check',
+                    'sandbox': 'bi-box', 'forensics': 'bi-fingerprint', 'edr': 'bi-pc-display',
+                    'mcp': 'bi-plug', 'network': 'bi-diagram-3', 'osint': 'bi-eye',
+                    'vulnerability': 'bi-bug', 'reverse_engineering': 'bi-cpu', 'other': 'bi-gear'
+                };
+
+                Object.keys(categories).sort().forEach(function(cat) {
+                    var header = document.createElement('div');
+                    header.className = 'list-group-item bg-transparent border-0 py-1 px-3';
+                    header.style.cssText = 'font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-secondary);font-weight:700;margin-top:0.3rem;';
+                    header.innerHTML = '<i class="bi ' + (catIcons[cat] || 'bi-gear') + ' me-1"></i>' + esc(cat.replace(/_/g, ' ')) + ' <span class="badge bg-secondary" style="font-size:0.55rem;">' + categories[cat].length + '</span>';
+                    container.appendChild(header);
+
+                    categories[cat].forEach(function(t) {
+                        var item = document.createElement('div');
+                        item.className = 'list-group-item bg-transparent py-1 px-3';
+                        item.style.cssText = 'font-size:0.78rem;border-color:var(--border-color);';
+                        var nameHtml = '<span style="color:var(--color-accent);font-weight:600;">' + esc(t.name) + '</span>';
+                        if (t.requires_approval) nameHtml += ' <span class="badge bg-warning" style="font-size:0.55rem;">APPROVAL</span>';
+                        if (t.is_dangerous) nameHtml += ' <span class="badge bg-danger" style="font-size:0.55rem;">SANDBOX</span>';
+                        var descText = (t.description || '').substring(0, 70);
+                        nameHtml += '<div style="font-size:0.68rem;color:var(--text-secondary);margin-top:1px;">' + esc(descText) + '</div>';
+                        item.innerHTML = nameHtml;
+                        container.appendChild(item);
+                    });
+                });
+            })
+            .catch(function() {
+                document.getElementById('toolsList').innerHTML = '<div class="text-center text-muted py-3"><small>Failed to load tools</small></div>';
+            });
+    }
+
+    function loadPlaybooks() {
+        fetch('/api/playbooks')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var playbooks = data.playbooks || [];
+                var container = document.getElementById('playbooksList');
+                while (container.firstChild) container.removeChild(container.firstChild);
+                document.getElementById('playbookCountBadge').textContent = playbooks.length;
+
+                var pbIcons = {
+                    'malware_analysis': 'bi-bug text-danger',
+                    'malware_deep_dive': 'bi-microscope text-danger',
+                    'exploit_reversing': 'bi-cpu text-warning',
+                    'incident_response': 'bi-shield-exclamation text-danger',
+                    'threat_hunt': 'bi-binoculars text-success',
+                    'alert_triage': 'bi-bell text-warning',
+                    'email_investigation': 'bi-envelope-exclamation text-info',
+                    'phishing_investigation': 'bi-fish text-warning',
+                    'ioc_triage': 'bi-search text-info',
+                };
+
+                playbooks.forEach(function(pb) {
+                    var item = document.createElement('button');
+                    item.className = 'list-group-item list-group-item-action bg-transparent py-2 px-3 playbook-item';
+                    item.style.cssText = 'border-color:var(--border-color);font-size:0.82rem;';
+                    item.id = 'pb-' + pb.id;
+                    item.onclick = function() { selectPlaybook(pb.id, pb.name); };
+
+                    var iconClass = pbIcons[pb.id] || 'bi-journal-code text-accent';
+                    var html = '<div class="d-flex align-items-center justify-content-between">';
+                    html += '<div><i class="bi ' + iconClass + ' me-2"></i><strong>' + esc(pb.name || pb.id) + '</strong></div>';
+                    html += '<span class="badge bg-secondary" style="font-size:0.6rem;">' + (pb.step_count || 0) + '</span>';
+                    html += '</div>';
+                    if (pb.description) {
+                        html += '<div style="font-size:0.7rem;color:var(--text-secondary);margin-top:2px;padding-left:1.5rem;">' + esc((pb.description || '').substring(0, 100)) + '</div>';
+                    }
+                    item.innerHTML = html;
+                    container.appendChild(item);
+                });
+            })
+            .catch(function() {
+                document.getElementById('playbooksList').innerHTML = '<div class="text-center text-muted py-2"><small>Failed to load</small></div>';
+            });
+    }
+
+    function selectPlaybook(id, name) {
+        document.querySelectorAll('.playbook-item').forEach(function(el) { el.classList.remove('selected'); });
+        if (selectedPlaybook === id) {
+            selectedPlaybook = null;
+            document.getElementById('chatInput').placeholder = 'e.g. Investigate IP 45.33.32.156 for C2 activity...';
+            return;
+        }
+        selectedPlaybook = id;
+        var pbEl = document.getElementById('pb-' + id);
+        if (pbEl) pbEl.classList.add('selected');
+        var input = document.getElementById('chatInput');
+        input.placeholder = 'Playbook: ' + (name || id) + ' - Enter target or parameters...';
+        input.focus();
+        addBubble('<i class="bi bi-journal-code me-1 text-accent"></i>Playbook selected: <strong>' + esc(name || id) + '</strong>. Enter your target and press Enter to execute.', 'system');
+        scrollToBottom();
+    }
+
+    function quickAction(prefix) {
+        var input = document.getElementById('chatInput');
+        input.value = prefix;
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+    }
+
+    function loadSessions() {
+        fetch('/api/agent/sessions')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var sel = document.getElementById('sessionSelect');
+                while (sel.options.length > 1) sel.remove(1);
+                (data.sessions || data || []).forEach(function(s) {
+                    var opt = document.createElement('option');
+                    opt.value = s.session_id || s.id;
+                    var goal = (s.goal || 'Session').substring(0, 35);
+                    var statusBadge = s.status === 'completed' ? ' [done]' : s.status === 'active' ? ' [running]' : s.status ? ' [' + s.status + ']' : '';
+                    var toolCount = s.tool_count || s.tools_used || '';
+                    var mcpCount = s.mcp_tool_count || '';
+                    var meta = '';
+                    if (toolCount) meta += ' T:' + toolCount;
+                    if (mcpCount) meta += ' MCP:' + mcpCount;
+                    opt.textContent = goal + statusBadge + meta;
+                    sel.appendChild(opt);
+                });
+            })
+            .catch(function() {});
+    }
+
+    function newSession() {
+        if (ws) ws.close();
+        sessionId = null;
+        stopTimer();
+        hideLiveToolIndicator();
+        toolCallCounter = 0;
+        investigationData = { tools_used: [], iocs_found: [], steps: [], mcp_tools: [] };
+        currentPhase = 'think';
+        document.getElementById('sessionSelect').value = '';
+        document.getElementById('exportBtn').style.display = 'none';
+        document.getElementById('elapsedTime').textContent = '';
+        var msgs = document.getElementById('chatMessages');
+        while (msgs.firstChild) msgs.removeChild(msgs.firstChild);
+        var welcome = document.createElement('div');
+        welcome.className = 'chat-bubble chat-bubble-system';
+        welcome.innerHTML = '<i class="bi bi-shield-lock me-1"></i>New session started. Describe your investigation goal.';
+        msgs.appendChild(welcome);
+        updateProgress(0, 0);
+        selectedPlaybook = null;
+        document.querySelectorAll('.playbook-item').forEach(function(el) { el.classList.remove('selected'); });
+        document.getElementById('chatInput').placeholder = 'e.g. Investigate IP 45.33.32.156 for C2 activity...';
+    }
+
+    function switchSession(id) {
+        if (!id) { newSession(); return; }
+        sessionId = id;
+        connectWebSocket(id);
+        loadHistory(id);
+        document.getElementById('exportBtn').style.display = 'inline-flex';
+    }
+
+    function loadHistory(id) {
+        fetch('/api/agent/sessions/' + encodeURIComponent(id))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var msgs = document.getElementById('chatMessages');
+                while (msgs.firstChild) msgs.removeChild(msgs.firstChild);
+                var history = data.history || data.messages || [];
+                history.forEach(function(m) {
+                    if (m.role === 'user') addBubble(m.content, 'user');
+                    else addBubble(m.content, 'agent');
+                });
+                if (data.steps) {
+                    updateProgress(data.current_step || (data.steps.length || 0), data.max_steps || 50);
+                }
+                if (data.status === 'completed') {
+                    document.getElementById('exportBtn').style.display = 'inline-flex';
+                }
+            })
+            .catch(function() {});
+    }
+
+    function connectWebSocket(id) {
+        if (ws) ws.close();
+        var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(proto + '//' + location.host + '/ws/agent/' + encodeURIComponent(id));
+
+        ws.onopen = function() {
+            document.getElementById('connectionStatus').innerHTML = '<span class="badge bg-success"><i class="bi bi-circle-fill me-1" style="font-size:0.45rem;"></i>Connected</span>';
+        };
+        ws.onmessage = function(evt) {
+            try { handleWSMessage(JSON.parse(evt.data)); } catch(e) {}
+        };
+        ws.onclose = function() {
+            document.getElementById('connectionStatus').innerHTML = '<span class="badge bg-secondary"><i class="bi bi-circle-fill me-1" style="font-size:0.45rem;"></i>Disconnected</span>';
+        };
+        ws.onerror = function() {
+            document.getElementById('connectionStatus').innerHTML = '<span class="badge bg-danger"><i class="bi bi-circle-fill me-1" style="font-size:0.45rem;"></i>Error</span>';
+        };
+    }
+
+    function handleWSMessage(msg) {
+        switch (msg.type) {
+            case 'phase':
+                var phase = msg.phase || 'thinking';
+                if (phase === 'thinking') {
+                    addPhaseIndicator('thinking', 'Analyzing (step ' + (msg.step || currentStep) + ')...');
+                    setCurrentPhase('think');
+                    hideLiveToolIndicator();
+                } else if (phase === 'acting') {
+                    addPhaseIndicator('acting', 'Executing: ' + (msg.tool || 'action'));
+                    if (msg.tool) addToolCall(msg.tool, msg.params, msg.source);
+                    setCurrentTool(msg.tool || '');
+                    setCurrentPhase('act');
+                    if (msg.tool) showLiveToolIndicator(msg.tool, 'act');
+                } else if (phase === 'running_playbook') {
+                    addPhaseIndicator('acting', 'Running playbook: ' + (msg.playbook_id || 'playbook'));
+                    setCurrentPhase('act');
+                } else {
+                    addPhaseIndicator('observing', 'Reviewing results...');
+                    setCurrentPhase('observe');
+                }
+                currentStep = msg.step || currentStep;
+                updateProgress(currentStep, maxSteps);
+                break;
+            case 'thinking':
+                addPhaseIndicator('thinking', msg.content || 'Analyzing...');
+                setCurrentPhase('think');
+                hideLiveToolIndicator();
+                break;
+            case 'acting':
+                addPhaseIndicator('acting', msg.content || 'Executing action...');
+                setCurrentTool(msg.tool || '');
+                setCurrentPhase('act');
+                if (msg.tool) showLiveToolIndicator(msg.tool, 'act');
+                break;
+            case 'observing':
+                addPhaseIndicator('observing', msg.content || 'Reviewing results...');
+                setCurrentPhase('observe');
+                break;
+            case 'observation':
+                currentStep = msg.step || (currentStep + 1);
+                updateProgress(currentStep, maxSteps);
+                var obsDuration = stopToolTimer();
+                addToolResult(msg.tool || 'tool', msg.result_preview || msg.result || '', msg.source, obsDuration);
+                investigationData.tools_used.push(msg.tool || 'unknown');
+                if (isToolMCP(msg.tool)) investigationData.mcp_tools.push(msg.tool);
+                setCurrentTool('');
+                hideLiveToolIndicator();
+                setCurrentPhase('observe');
+                break;
+            case 'tool_call':
+                addToolCall(msg.tool, msg.args, msg.source);
+                setCurrentTool(msg.tool || '');
+                setCurrentPhase('act');
+                showLiveToolIndicator(msg.tool, 'act');
+                if (isToolMCP(msg.tool)) investigationData.mcp_tools.push(msg.tool);
+                break;
+            case 'tool_result':
+                var trDuration = stopToolTimer();
+                addToolResult(msg.tool || 'tool', msg.result || msg.result_preview || msg.content || '', msg.source, trDuration || msg.duration);
+                hideLiveToolIndicator();
+                setCurrentPhase('observe');
+                break;
+            case 'step':
+                currentStep = msg.step || (currentStep + 1);
+                maxSteps = msg.max_steps || maxSteps;
+                updateProgress(currentStep, maxSteps);
+                break;
+            case 'session_state':
+                if (msg.session) {
+                    maxSteps = msg.session.max_steps || 50;
+                    var steps = msg.steps || [];
+                    currentStep = steps.length;
+                    updateProgress(currentStep, maxSteps);
+                    if (msg.session.goal) addBubble(msg.session.goal, 'user');
+                    steps.forEach(function(s) {
+                        if (s.step_type === 'tool_call' && s.tool_name) {
+                            addToolCall(s.tool_name, s.tool_params ? JSON.parse(s.tool_params || '{}') : null);
+                        } else if (s.step_type === 'final_answer') {
+                            addBubble(s.data || 'Investigation complete.', 'agent');
+                        }
+                    });
+                }
+                break;
+            case 'message': case 'response':
+                addBubble(msg.content, 'agent'); break;
+            case 'approval_required': case 'approval_needed':
+                showApproval(msg); break;
+            case 'completed':
+                stopTimer();
+                hideLiveToolIndicator();
+                addBubble(msg.summary || 'Investigation completed.', 'agent');
+                addInvestigationSummary(msg);
+                updateProgress(maxSteps, maxSteps);
+                document.getElementById('exportBtn').style.display = 'inline-flex';
+                loadSessions();
+                break;
+            case 'failed':
+                stopTimer();
+                hideLiveToolIndicator();
+                addBubble('Investigation failed: ' + (msg.error || msg.summary || 'Unknown error'), 'system');
+                loadSessions(); break;
+            case 'cancelled':
+                stopTimer();
+                hideLiveToolIndicator();
+                addBubble('Investigation cancelled.', 'system');
+                loadSessions(); break;
+            case 'complete':
+                addBubble(msg.content || 'Investigation complete.', 'agent'); break;
+            case 'error':
+                addBubble('Error: ' + (msg.content || msg.error || msg.message), 'system'); break;
+            case 'heartbeat': break;
+        }
+        scrollToBottom();
+    }
+
+    function send() {
+        var input = document.getElementById('chatInput');
+        var text = input.value.trim();
+        if (!text) return;
+        input.value = '';
+        addBubble(text, 'user');
+        scrollToBottom();
+
+        var btn = document.getElementById('sendBtn');
+        btn.disabled = true;
+
+        if (!sessionId) {
+            toolCallCounter = 0;
+            investigationData = { tools_used: [], iocs_found: [], steps: [], mcp_tools: [] };
+            currentPhase = 'think';
+            startTimer();
+
+            if (selectedPlaybook) {
+                fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text, playbook_id: selectedPlaybook })
+                })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                .then(function(data) {
+                    btn.disabled = false;
+                    sessionId = data.session_id;
+                    maxSteps = 200;
+                    updateProgress(0, maxSteps);
+                    addBubble('<i class="bi bi-journal-code me-1"></i>Playbook <strong>' + esc(selectedPlaybook) + '</strong> started...', 'system');
+                    connectWebSocket(sessionId);
+                    loadSessions();
+                    selectedPlaybook = null;
+                    document.querySelectorAll('.playbook-item').forEach(function(el) { el.classList.remove('selected'); });
+                    document.getElementById('chatInput').placeholder = 'e.g. Investigate IP 45.33.32.156 for C2 activity...';
+                })
+                .catch(function(err) {
+                    btn.disabled = false;
+                    stopTimer();
+                    addBubble('Playbook failed: ' + err.message, 'system');
+                    scrollToBottom();
+                });
+            } else {
+                fetch('/api/agent/investigate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ goal: text })
+                })
+                .then(function(r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                .then(function(data) {
+                    btn.disabled = false;
+                    sessionId = data.session_id;
+                    maxSteps = data.max_steps || 50;
+                    updateProgress(0, maxSteps);
+                    addBubble('<i class="bi bi-gear-wide-connected me-1"></i>Investigation started. The agent is working autonomously...', 'system');
+                    connectWebSocket(sessionId);
+                    loadSessions();
+                })
+                .catch(function(err) {
+                    btn.disabled = false;
+                    stopTimer();
+                    addBubble('Failed to start: ' + err.message, 'system');
+                    scrollToBottom();
+                });
+            }
+        } else {
+            fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: text, session_id: sessionId })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                btn.disabled = false;
+                if (data.response) addBubble(data.response, 'agent');
+                scrollToBottom();
+            })
+            .catch(function(err) {
+                btn.disabled = false;
+                addBubble('Failed: ' + err.message, 'system');
+                scrollToBottom();
+            });
+        }
+    }
+
+    // ===== Bubble Rendering =====
+    function addBubble(text, type) {
+        var msgs = document.getElementById('chatMessages');
+        var div = document.createElement('div');
+        if (type === 'user') {
+            div.className = 'chat-bubble chat-bubble-user';
+            div.innerHTML = '<div class="bubble-label">You</div>' + esc(text);
+        } else if (type === 'agent') {
+            div.className = 'chat-bubble chat-bubble-agent';
+            var verdict = detectVerdict(text);
+            var verdictHtml = '';
+            if (verdict) {
+                var vIcon = verdict === 'malicious' ? 'bi-exclamation-triangle-fill' : verdict === 'suspicious' ? 'bi-exclamation-circle-fill' : 'bi-check-circle-fill';
+                verdictHtml = '<div style="margin-bottom:0.4rem;"><span class="verdict-badge verdict-' + verdict + '"><i class="bi ' + vIcon + '"></i> ' + verdict.toUpperCase() + '</span></div>';
+            }
+            div.innerHTML = '<div class="bubble-label">Agent</div>' + verdictHtml + '<div class="agent-content">' + renderMarkdown(text) + '</div>';
+        } else {
+            div.className = 'chat-bubble chat-bubble-system';
+            div.innerHTML = text || '';
+        }
+        msgs.appendChild(div);
+    }
+
+    function addPhaseIndicator(phase, text) {
+        var msgs = document.getElementById('chatMessages');
+        // Remove last phase indicator to prevent clutter
+        var lastChild = msgs.lastElementChild;
+        if (lastChild && lastChild.querySelector('.phase-indicator')) {
+            msgs.removeChild(lastChild);
+        }
+        var div = document.createElement('div');
+        div.className = 'chat-bubble chat-bubble-agent';
+        div.style.cssText = 'padding:0.5rem 0.75rem;max-width:60%;';
+        var iconMap = { thinking: 'bi-lightbulb', acting: 'bi-gear-wide-connected', observing: 'bi-eye' };
+        div.innerHTML = '<div class="phase-indicator phase-' + phase + '"><div class="phase-dot"></div><i class="bi ' + (iconMap[phase] || 'bi-gear') + '"></i> ' + esc(phase.charAt(0).toUpperCase() + phase.slice(1)) + '</div><div style="font-size:0.8rem;color:var(--text-secondary);">' + esc(text) + '</div>';
+        msgs.appendChild(div);
+        scrollToBottom();
+    }
+
+    function addToolCall(name, args, source) {
+        toolCallCounter++;
+        var msgs = document.getElementById('chatMessages');
+        var div = document.createElement('div');
+        div.className = 'chat-bubble chat-bubble-agent';
+        div.style.cssText = 'padding:0.4rem 0.6rem;';
+
+        var blockId = 'tool-' + toolCallCounter;
+        var argsStr = '';
+        if (args) {
+            try { argsStr = typeof args === 'string' ? args : JSON.stringify(args, null, 2); } catch(e) { argsStr = String(args); }
+        }
+
+        var sourceBadge = '';
+        if (source) {
+            sourceBadge = source === 'local' ? '<span class="source-badge source-badge-local"><i class="bi bi-house" style="font-size:0.55rem;"></i>LOCAL</span> ' : '<span class="source-badge source-badge-mcp"><i class="bi bi-plug" style="font-size:0.55rem;"></i>' + esc(source) + '</span> ';
+        } else {
+            sourceBadge = makeSourceBadge(name) + ' ';
+        }
+
+        var stepLabel = '<span style="font-size:0.65rem;color:var(--text-muted);margin-left:0.4rem;">Step ' + currentStep + '/' + maxSteps + '</span>';
+
+        var html = '<div class="tool-call-block"><div class="tool-call-header" onclick="document.getElementById(\'' + blockId + '\').classList.toggle(\'show\')">';
+        html += '<div class="d-flex align-items-center gap-2">' + sourceBadge + '<i class="bi bi-wrench me-1"></i><span class="tool-name">' + esc(name || 'tool') + '</span>' + stepLabel + '</div>';
+        html += '<div class="tool-status d-flex align-items-center gap-2"><div class="lti-spinner" style="width:10px;height:10px;border-width:1.5px;"></div><i class="bi bi-chevron-down" style="font-size:0.65rem;"></i></div>';
+        html += '</div>';
+        if (argsStr) {
+            html += '<div id="' + blockId + '" class="tool-call-body"><pre>' + esc(argsStr) + '</pre></div>';
+        }
+        html += '</div>';
+        div.innerHTML = html;
+        div.setAttribute('data-tool-block-id', blockId);
+        msgs.appendChild(div);
+        investigationData.tools_used.push(name || 'unknown');
+        scrollToBottom();
+    }
+
+    function addToolResult(toolName, preview, source, duration) {
+        toolCallCounter++;
+        var msgs = document.getElementById('chatMessages');
+        var blockId = 'result-' + toolCallCounter;
+        var div = document.createElement('div');
+        div.className = 'chat-bubble chat-bubble-agent';
+        div.style.cssText = 'padding:0.4rem 0.6rem;max-width:92%;';
+
+        var previewText = preview || '';
+
+        // Build source badge
+        var sourceBadge = '';
+        if (source) {
+            sourceBadge = source === 'local' ? '<span class="source-badge source-badge-local"><i class="bi bi-house" style="font-size:0.55rem;"></i>LOCAL</span>' : '<span class="source-badge source-badge-mcp"><i class="bi bi-plug" style="font-size:0.55rem;"></i>' + esc(source) + '</span>';
+        } else {
+            sourceBadge = makeSourceBadge(toolName);
+        }
+
+        var durationHtml = duration ? '<span class="trc-duration"><i class="bi bi-clock" style="font-size:0.6rem;"></i> ' + esc(String(duration)) + '</span>' : '';
+
+        var richContent = renderToolResultRich(toolName, previewText);
+
+        var html = '<div class="tool-result-card">';
+        html += '<div class="tool-result-card-header" onclick="var b=document.getElementById(\'' + blockId + '\');b.classList.toggle(\'collapsed\');">';
+        html += '<div class="trc-left">';
+        html += '<i class="bi bi-check-circle-fill text-success"></i>';
+        html += sourceBadge;
+        html += '<span style="font-weight:700;color:var(--color-accent);font-size:0.82rem;">' + esc(toolName) + '</span>';
+        html += '<span class="text-muted" style="font-size:0.68rem;">result</span>';
+        html += '</div>';
+        html += '<div class="trc-right">';
+        html += durationHtml;
+        html += '<button class="btn btn-link btn-sm p-0" style="font-size:0.65rem;color:var(--text-secondary);" onclick="event.stopPropagation();AgentChat.copyIOC(document.getElementById(\'' + blockId + '-raw\').textContent)" title="Copy raw result"><i class="bi bi-clipboard"></i></button>';
+        html += '<i class="bi bi-chevron-down" style="font-size:0.65rem;"></i>';
+        html += '</div>';
+        html += '</div>';
+        html += '<div id="' + blockId + '" class="tool-result-card-body">';
+        html += richContent;
+        html += '<details style="margin-top:0.4rem;"><summary style="font-size:0.68rem;color:var(--text-muted);cursor:pointer;">Raw output</summary>';
+        html += '<pre id="' + blockId + '-raw" style="margin-top:0.3rem;font-size:0.72rem;max-height:200px;overflow-y:auto;background:var(--code-bg);padding:0.4rem;border-radius:4px;">' + esc(typeof previewText === 'object' ? JSON.stringify(previewText, null, 2) : String(previewText)) + '</pre>';
+        html += '</details>';
+        html += '</div>';
+        html += '</div>';
+        div.innerHTML = html;
+        msgs.appendChild(div);
+        scrollToBottom();
+    }
+
+    // ===== Investigation Summary =====
+    function addInvestigationSummary(msg) {
+        var msgs = document.getElementById('chatMessages');
+        var div = document.createElement('div');
+        div.className = 'investigation-summary';
+        div.style.cssText = 'align-self:stretch;max-width:100%;';
+
+        var elapsed = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
+        var elapsedStr = elapsed > 60 ? Math.floor(elapsed/60) + 'm ' + (elapsed%60) + 's' : elapsed + 's';
+        var uniqueTools = [];
+        var seen = {};
+        investigationData.tools_used.forEach(function(t) { if (!seen[t]) { seen[t] = true; uniqueTools.push(t); } });
+
+        var html = '<div class="summary-header">';
+        html += '<div><i class="bi bi-flag-fill me-2 text-success"></i><strong>Investigation Complete</strong></div>';
+        html += '<span class="text-muted" style="font-size:0.75rem;"><i class="bi bi-clock me-1"></i>' + elapsedStr + '</span>';
+        html += '</div>';
+
+        var uniqueMcp = [];
+        var seenMcp = {};
+        investigationData.mcp_tools.forEach(function(t) { if (!seenMcp[t]) { seenMcp[t] = true; uniqueMcp.push(t); } });
+        var localCount = uniqueTools.length - uniqueMcp.length;
+
+        html += '<div class="summary-stats">';
+        html += '<div class="summary-stat"><div class="stat-value text-accent">' + currentStep + '</div><div class="stat-label">Steps</div></div>';
+        html += '<div class="summary-stat"><div class="stat-value text-info">' + uniqueTools.length + '</div><div class="stat-label">Tools Used</div></div>';
+        html += '<div class="summary-stat"><div class="stat-value" style="color:#22c55e;">' + (localCount > 0 ? localCount : 0) + '</div><div class="stat-label">Local Tools</div></div>';
+        html += '<div class="summary-stat"><div class="stat-value" style="color:#38bdf8;">' + uniqueMcp.length + '</div><div class="stat-label">MCP Tools</div></div>';
+        html += '<div class="summary-stat"><div class="stat-value text-warning">' + elapsedStr + '</div><div class="stat-label">Duration</div></div>';
+        html += '<div class="summary-stat"><div class="stat-value text-success">' + (msg.findings_count || '-') + '</div><div class="stat-label">Findings</div></div>';
+        html += '</div>';
+
+        if (uniqueTools.length > 0) {
+            html += '<div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:0.3rem;">Tools executed:</div>';
+            html += '<div class="summary-tools">';
+            uniqueTools.forEach(function(t) {
+                var badgeCls = isToolMCP(t) ? 'background:rgba(56,189,248,0.1);color:#38bdf8;border-color:rgba(56,189,248,0.2);' : '';
+                var icon = isToolMCP(t) ? '<i class="bi bi-plug" style="font-size:0.55rem;margin-right:2px;"></i>' : '<i class="bi bi-house" style="font-size:0.55rem;margin-right:2px;"></i>';
+                html += '<span class="tool-tag" style="' + badgeCls + '">' + icon + esc(t) + '</span>';
+            });
+            html += '</div>';
+        }
+
+        div.innerHTML = html;
+        msgs.appendChild(div);
+    }
+
+    function showApproval(msg) {
+        pendingApprovalId = msg.approval_id || msg.id;
+        var detail = document.getElementById('approvalDetail');
+        detail.innerHTML = '<div class="tool-name" style="font-size:0.9rem;">' + esc(msg.tool || msg.action || 'Action') + '</div><div class="mt-1 text-muted" style="font-size:0.82rem;">' + esc(msg.description || msg.content || '') + '</div>';
+        document.getElementById('approvalOverlay').classList.add('show');
+    }
+
+    function respondApproval(approved) {
+        document.getElementById('approvalOverlay').classList.remove('show');
+        var sid = sessionId || pendingApprovalId;
+        if (sid) {
+            fetch('/api/agent/sessions/' + encodeURIComponent(sid) + '/approve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ approved: approved, comment: '' })
+            }).catch(function() {});
+        }
+        addBubble(approved ? '<i class="bi bi-check-circle text-success me-1"></i>Action approved.' : '<i class="bi bi-x-circle text-danger me-1"></i>Action rejected.', 'system');
+        pendingApprovalId = null;
+    }
+
+    function updateProgress(step, max) {
+        var bar = document.getElementById('investigationProgress');
+        if (max > 0) {
+            bar.classList.remove('d-none');
+            document.getElementById('stepCounter').textContent = step + ' / ' + max;
+            document.getElementById('stepProgressBar').style.width = Math.min(100, (step / max) * 100) + '%';
+        } else {
+            bar.classList.add('d-none');
+        }
+    }
+
+    function setCurrentTool(name) {
+        var el = document.getElementById('currentToolName');
+        if (el) {
+            if (name) {
+                el.innerHTML = makeSourceBadge(name) + ' <span style="color:var(--color-warning);">Running: ' + esc(name) + '</span>';
+            } else {
+                el.innerHTML = '';
+            }
+        }
+    }
+
+    function setCurrentPhase(phase) {
+        currentPhase = phase;
+        var el = document.getElementById('currentPhaseBadge');
+        if (el) el.innerHTML = makePhaseBadge(phase);
+    }
+
+    function scrollToBottom() {
+        var msgs = document.getElementById('chatMessages');
+        setTimeout(function() { msgs.scrollTop = msgs.scrollHeight; }, 50);
+    }
+
+    function exportSession() {
+        if (!sessionId) return;
+        fetch('/api/agent/sessions/' + encodeURIComponent(sessionId))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url;
+                a.download = 'investigation_' + sessionId + '.json';
+                a.click();
+                URL.revokeObjectURL(url);
+            })
+            .catch(function(err) {
+                addBubble('Export failed: ' + err.message, 'system');
+            });
+    }
+
+    function copyIOC(text) {
+        copyToClipboard(text);
+    }
+
+    // ===== MCP System Status =====
+    function refreshMCPStatus() {
+        fetch('/api/mcp/servers')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var servers = data.servers || data || [];
+                var online = 0, offline = 0, totalTools = 0;
+                var listEl = document.getElementById('mcpServerList');
+                if (!listEl) return;
+                // Clear previous items safely
+                while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
+
+                if (!Array.isArray(servers) || servers.length === 0) {
+                    var emptyMsg = document.createElement('div');
+                    emptyMsg.className = 'text-center text-muted py-2';
+                    var emptySmall = document.createElement('small');
+                    emptySmall.textContent = 'No MCP servers configured';
+                    emptyMsg.appendChild(emptySmall);
+                    listEl.appendChild(emptyMsg);
+                    return;
+                }
+
+                servers.forEach(function(srv) {
+                    var live = srv.live_status || {};
+                    var isOnline = live.connected === true || srv.status === 'connected';
+                    var toolCount = (live.tools && live.tools.length) || srv.tool_count || 0;
+                    if (isOnline) { online++; totalTools += toolCount; }
+                    else { offline++; }
+
+                    var item = document.createElement('div');
+                    item.className = 'mcp-srv-item';
+                    var dot = document.createElement('span');
+                    dot.className = 'mcp-srv-dot ' + (isOnline ? 'online' : 'offline');
+                    var name = document.createElement('span');
+                    name.className = 'mcp-srv-name';
+                    name.textContent = srv.name || srv.server_name || 'Unknown';
+                    name.title = name.textContent;
+                    item.appendChild(dot);
+                    item.appendChild(name);
+                    if (toolCount > 0) {
+                        var tools = document.createElement('span');
+                        tools.className = 'mcp-srv-tools';
+                        tools.textContent = toolCount + ' tools';
+                        item.appendChild(tools);
+                    }
+                    listEl.appendChild(item);
+                });
+
+                var onlineEl = document.getElementById('mcpOnlineCount');
+                var offlineEl = document.getElementById('mcpOfflineCount');
+                var toolEl = document.getElementById('mcpToolCount');
+                if (onlineEl) onlineEl.textContent = online;
+                if (offlineEl) offlineEl.textContent = offline;
+                if (toolEl) toolEl.textContent = totalTools;
+            })
+            .catch(function() {
+                var listEl = document.getElementById('mcpServerList');
+                if (!listEl) return;
+                while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
+                var errMsg = document.createElement('div');
+                errMsg.className = 'text-center text-muted py-2';
+                var errSmall = document.createElement('small');
+                errSmall.textContent = 'Failed to load status';
+                errMsg.appendChild(errSmall);
+                listEl.appendChild(errMsg);
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        init();
+        refreshMCPStatus();
+        // Auto-refresh MCP status every 30s
+        setInterval(refreshMCPStatus, 30000);
+    });
+
+    return {
+        send: send,
+        newSession: newSession,
+        switchSession: switchSession,
+        respondApproval: respondApproval,
+        quickAction: quickAction,
+        exportSession: exportSession,
+        copyIOC: copyIOC,
+        refreshMCPStatus: refreshMCPStatus
+    };
+})();
+</script>
+{% endblock %}

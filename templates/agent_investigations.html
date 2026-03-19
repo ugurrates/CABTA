@@ -1,0 +1,2645 @@
+{# Agent Investigations - Session List and Management #}
+{% extends "base.html" %}
+
+{% block title %}Investigations - Blue Team Assistant{% endblock %}
+{% block page_title %}Investigations{% endblock %}
+{% block page_subtitle %}<span class="page-subtitle">Agent Investigation Sessions</span>{% endblock %}
+
+{% block header_actions %}
+<button class="btn btn-sm btn-accent" data-bs-toggle="modal" data-bs-target="#newInvestigationModal">
+    <i class="bi bi-plus-lg me-1"></i>New Investigation
+</button>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+/* ── Stat Cards Enhanced ── */
+.stat-card {
+    position: relative;
+    overflow: hidden;
+}
+.stat-icon-bg {
+    position: absolute;
+    right: -8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 4rem;
+    opacity: 0.07;
+    pointer-events: none;
+    line-height: 1;
+}
+@keyframes pulse-active {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.08); opacity: 0.85; }
+}
+.stat-value.pulse-active {
+    animation: pulse-active 2s ease-in-out infinite;
+    display: inline-block;
+}
+
+/* ── Search Bar ── */
+.inv-search-input {
+    background: var(--bg-tertiary, #1a1a2e);
+    border: 1px solid var(--border-color, #333);
+    color: var(--text-primary, #e0e0e0);
+    border-radius: 6px;
+    padding: 0.3rem 0.6rem 0.3rem 2rem;
+    font-size: 0.85rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    width: 220px;
+}
+.inv-search-input:focus {
+    outline: none;
+    border-color: var(--color-accent, #58a6ff);
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+}
+.inv-search-wrap {
+    position: relative;
+}
+.inv-search-wrap i {
+    position: absolute;
+    left: 0.6rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted, #888);
+    font-size: 0.8rem;
+    pointer-events: none;
+}
+
+/* ── View Toggle ── */
+.view-toggle .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8rem;
+    border-color: var(--border-color, #444);
+    color: var(--text-secondary, #aaa);
+    background: transparent;
+}
+.view-toggle .btn.active {
+    background: var(--color-accent, #58a6ff);
+    border-color: var(--color-accent, #58a6ff);
+    color: #fff;
+}
+.view-toggle .btn:hover:not(.active) {
+    background: var(--bg-tertiary, #1a1a2e);
+}
+
+/* ── Card View Grid ── */
+.inv-card-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+@media (min-width: 768px) {
+    .inv-card-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (min-width: 1200px) {
+    .inv-card-grid { grid-template-columns: repeat(3, 1fr); }
+}
+.inv-session-card {
+    background: var(--bg-secondary, #16213e);
+    border: 1px solid var(--border-color, #333);
+    border-radius: 8px;
+    padding: 1rem;
+    transition: border-color 0.2s, transform 0.15s;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+.inv-session-card:hover {
+    border-color: var(--color-accent, #58a6ff);
+    transform: translateY(-2px);
+}
+.inv-session-card .card-goal {
+    font-size: 0.9rem;
+    color: var(--text-primary, #e0e0e0);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.4;
+    min-height: 2.5em;
+}
+.inv-session-card .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    font-size: 0.8rem;
+    color: var(--text-secondary, #aaa);
+}
+.inv-session-card .card-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: auto;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border-color, #333);
+}
+
+/* ── Status Gradient Headers (Modal) ── */
+.modal-status-banner {
+    padding: 1rem 1.25rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    color: #fff;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.modal-status-banner.status-completed {
+    background: linear-gradient(135deg, #166534, #22c55e40);
+}
+.modal-status-banner.status-failed {
+    background: linear-gradient(135deg, #7f1d1d, #ef444440);
+}
+.modal-status-banner.status-active {
+    background: linear-gradient(135deg, #1e3a5f, #3b82f640);
+}
+.modal-status-banner.status-unknown {
+    background: linear-gradient(135deg, #374151, #6b728040);
+}
+
+/* ── Enhanced Timeline ── */
+.enhanced-timeline {
+    position: relative;
+    padding-left: 2rem;
+    margin-left: 0.5rem;
+}
+.enhanced-timeline::before {
+    content: '';
+    position: absolute;
+    left: 7px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(to bottom, var(--color-accent, #58a6ff), var(--border-color, #444));
+}
+.timeline-item {
+    position: relative;
+    padding: 0.6rem 0.85rem;
+    margin-bottom: 0.6rem;
+    background: var(--bg-tertiary, #1a1a2e);
+    border: 1px solid var(--border-color, #444);
+    border-radius: 6px;
+    transition: border-color 0.2s;
+}
+.timeline-item:hover {
+    border-color: var(--color-accent, #58a6ff);
+}
+.timeline-dot {
+    position: absolute;
+    left: -2.28rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--bg-secondary, #16213e);
+    z-index: 1;
+}
+@keyframes dot-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
+    50% { box-shadow: 0 0 0 5px rgba(59, 130, 246, 0); }
+}
+.timeline-dot.dot-active {
+    animation: dot-pulse 1.5s ease-in-out infinite;
+}
+
+/* ── Tool Usage Summary ── */
+.tool-usage-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+.tool-usage-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    background: var(--bg-tertiary, #1a1a2e);
+    border: 1px solid var(--border-color, #444);
+    color: var(--text-secondary, #aaa);
+}
+.tool-usage-chip .tool-count {
+    background: var(--color-accent, #58a6ff);
+    color: #fff;
+    font-size: 0.65rem;
+    padding: 0 0.35rem;
+    border-radius: 10px;
+    font-weight: 700;
+}
+
+/* ── Bulk Actions ── */
+.bulk-actions-bar {
+    display: none;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 1rem;
+    background: var(--bg-tertiary, #1a1a2e);
+    border-bottom: 1px solid var(--border-color, #444);
+    font-size: 0.85rem;
+}
+.bulk-actions-bar.visible {
+    display: flex;
+}
+.bulk-check {
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--color-accent, #58a6ff);
+    cursor: pointer;
+}
+
+/* ── Priority selector ── */
+.priority-option { display: flex; align-items: center; gap: 0.5rem; }
+.priority-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%; display: inline-block;
+}
+.priority-dot.low { background: #6b7280; }
+.priority-dot.medium { background: #f59e0b; }
+.priority-dot.high { background: #f97316; }
+.priority-dot.critical { background: #ef4444; }
+
+/* ── Summary Card (detail panel top) ── */
+.detail-summary-card {
+    background: var(--bg-tertiary, #1a1a2e);
+    border: 1px solid var(--border-color, #333);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 0.75rem;
+}
+.detail-summary-item {
+    text-align: center;
+}
+.detail-summary-item .summary-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--text-primary, #e0e0e0);
+    line-height: 1.2;
+}
+.detail-summary-item .summary-label {
+    font-size: 0.7rem;
+    color: var(--text-muted, #8b949e);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.summary-value.text-green { color: #3fb950 !important; }
+.summary-value.text-blue { color: #58a6ff !important; }
+.summary-value.text-yellow { color: #d29922 !important; }
+.summary-value.text-red { color: #f85149 !important; }
+
+/* ── Threat Score Gauge ── */
+.threat-gauge {
+    position: relative;
+    width: 100%;
+    height: 8px;
+    background: var(--bg-tertiary, #1a1a2e);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 4px 0;
+}
+.threat-gauge-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.6s ease;
+}
+.threat-gauge-fill.gauge-green { background: linear-gradient(90deg, #22863a, #3fb950); }
+.threat-gauge-fill.gauge-yellow { background: linear-gradient(90deg, #b08800, #d29922); }
+.threat-gauge-fill.gauge-red { background: linear-gradient(90deg, #b62324, #f85149); }
+
+.score-display {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 700;
+}
+.score-number {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+.score-max {
+    font-size: 0.8rem;
+    color: var(--text-muted, #8b949e);
+}
+
+/* ── Verdict Badge ── */
+.verdict-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.65rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.verdict-badge.verdict-malicious { background: rgba(248,81,73,0.15); color: #f85149; border: 1px solid rgba(248,81,73,0.3); }
+.verdict-badge.verdict-suspicious { background: rgba(210,153,34,0.15); color: #d29922; border: 1px solid rgba(210,153,34,0.3); }
+.verdict-badge.verdict-clean { background: rgba(63,185,80,0.15); color: #3fb950; border: 1px solid rgba(63,185,80,0.3); }
+
+/* ── C2 Alert Banner ── */
+.c2-alert {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: rgba(248,81,73,0.1);
+    border: 1px solid rgba(248,81,73,0.3);
+    border-radius: 6px;
+    color: #f85149;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+}
+
+/* ── Source Table ── */
+.source-table {
+    width: 100%;
+    font-size: 0.75rem;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-top: 0.4rem;
+}
+.source-table th {
+    background: rgba(255,255,255,0.04);
+    color: var(--text-muted, #8b949e);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    letter-spacing: 0.5px;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--border-color, #333);
+    text-align: left;
+}
+.source-table td {
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    color: var(--text-primary, #e0e0e0);
+    vertical-align: middle;
+}
+.source-table tr:hover td {
+    background: rgba(255,255,255,0.02);
+}
+.source-status-icon { font-size: 0.85rem; }
+.source-status-icon.flagged { color: #f85149; }
+.source-status-icon.clean { color: #3fb950; }
+.source-status-icon.error { color: #8b949e; }
+
+/* ── MCP Badge ── */
+.mcp-server-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    background: rgba(88,166,255,0.12);
+    color: #58a6ff;
+    border: 1px solid rgba(88,166,255,0.25);
+    margin-bottom: 0.4rem;
+}
+
+/* ── Port / Tag Badges ── */
+.port-badge, .tag-badge-sm, .vuln-badge {
+    display: inline-block;
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    margin: 1px;
+}
+.port-badge {
+    background: rgba(210,168,255,0.12);
+    color: #d2a8ff;
+    border: 1px solid rgba(210,168,255,0.2);
+}
+.tag-badge-sm {
+    background: rgba(88,166,255,0.12);
+    color: #58a6ff;
+    border: 1px solid rgba(88,166,255,0.2);
+}
+.vuln-badge {
+    background: rgba(248,81,73,0.12);
+    color: #f85149;
+    border: 1px solid rgba(248,81,73,0.2);
+}
+
+/* ── Info Card ── */
+.info-card {
+    background: rgba(0,0,0,0.2);
+    border: 1px solid var(--border-color, #333);
+    border-radius: 6px;
+    padding: 0.6rem 0.75rem;
+    margin-top: 0.5rem;
+}
+.info-card-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--color-accent, #58a6ff);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.4rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+.info-card .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.15rem 0;
+    font-size: 0.78rem;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.info-card .info-row:last-child { border-bottom: none; }
+.info-card .info-label { color: var(--text-muted, #8b949e); }
+.info-card .info-value { color: var(--text-primary, #e0e0e0); font-weight: 500; }
+
+/* ── Copy Button ── */
+.copy-btn {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 3px;
+    color: var(--text-muted, #8b949e);
+    font-size: 0.65rem;
+    padding: 0 0.3rem;
+    cursor: pointer;
+    line-height: 1.4;
+    transition: color 0.2s, border-color 0.2s;
+}
+.copy-btn:hover { color: var(--color-accent, #58a6ff); border-color: var(--color-accent, #58a6ff); }
+
+/* ── Auth Status Indicators ── */
+.auth-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+.auth-indicator.auth-pass { background: rgba(63,185,80,0.12); color: #3fb950; }
+.auth-indicator.auth-fail { background: rgba(248,81,73,0.12); color: #f85149; }
+.auth-indicator.auth-unknown { background: rgba(139,148,158,0.12); color: #8b949e; }
+
+/* ── GeoIP Indicators ── */
+.geo-indicators {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.3rem;
+}
+.geo-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.12rem 0.45rem;
+    border-radius: 12px;
+    font-size: 0.68rem;
+    font-weight: 600;
+}
+.geo-pill.pill-active { background: rgba(248,81,73,0.12); color: #f85149; border: 1px solid rgba(248,81,73,0.2); }
+.geo-pill.pill-inactive { background: rgba(139,148,158,0.08); color: #6e7681; border: 1px solid rgba(139,148,158,0.15); }
+
+/* ── Phase Flow (THINK -> ACT -> OBSERVE) ── */
+.phase-flow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.15rem;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.phase-flow .phase {
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+}
+.phase-flow .phase.phase-active { opacity: 1; }
+.phase-flow .phase.phase-dim { opacity: 0.3; }
+.phase-flow .phase-think { background: rgba(139,148,158,0.15); color: #8b949e; }
+.phase-flow .phase-act { background: rgba(63,185,80,0.15); color: #3fb950; }
+.phase-flow .phase-observe { background: rgba(210,168,255,0.15); color: #d2a8ff; }
+.phase-flow .phase-arrow { color: var(--text-muted, #8b949e); opacity: 0.4; font-size: 0.55rem; }
+
+/* ── Step Number Badge ── */
+.step-num-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.6rem;
+    height: 1.6rem;
+    padding: 0 0.35rem;
+    border-radius: 4px;
+    background: rgba(88,166,255,0.12);
+    color: var(--color-accent, #58a6ff);
+    font-size: 0.68rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+/* ── Collapsible Step Detail ── */
+.step-detail-toggle {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 3px;
+    color: var(--text-muted, #8b949e);
+    font-size: 0.65rem;
+    padding: 0.1rem 0.4rem;
+    cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+}
+.step-detail-toggle:hover { color: var(--color-accent, #58a6ff); border-color: var(--color-accent, #58a6ff); }
+.step-collapsible {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+}
+.step-collapsible.expanded {
+    max-height: 2000px;
+}
+
+/* ── Findings List ── */
+.finding-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.55rem 0.75rem;
+    background: var(--bg-tertiary, #1a1a2e);
+    border: 1px solid var(--border-color, #333);
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    font-size: 0.8rem;
+    transition: border-color 0.2s;
+}
+.finding-item:hover { border-color: rgba(88,166,255,0.3); }
+.finding-icon {
+    flex-shrink: 0;
+    width: 1.5rem;
+    height: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 0.7rem;
+}
+.finding-icon.icon-danger { background: rgba(248,81,73,0.15); color: #f85149; }
+.finding-icon.icon-warning { background: rgba(210,153,34,0.15); color: #d29922; }
+.finding-icon.icon-info { background: rgba(88,166,255,0.15); color: #58a6ff; }
+.finding-icon.icon-success { background: rgba(63,185,80,0.15); color: #3fb950; }
+.finding-content { flex: 1; min-width: 0; }
+.finding-content .finding-text { color: var(--text-primary, #e0e0e0); line-height: 1.4; }
+.finding-content .finding-meta { font-size: 0.7rem; color: var(--text-muted, #8b949e); margin-top: 0.2rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.finding-tool-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    background: rgba(210,168,255,0.1);
+    color: #d2a8ff;
+    border: 1px solid rgba(210,168,255,0.2);
+}
+
+/* ── Detail Tabs ── */
+.detail-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--border-color, #333);
+    margin-bottom: 1rem;
+}
+.detail-tab {
+    padding: 0.5rem 1rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted, #8b949e);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+}
+.detail-tab:hover { color: var(--text-primary, #e0e0e0); }
+.detail-tab.active {
+    color: var(--color-accent, #58a6ff);
+    border-bottom-color: var(--color-accent, #58a6ff);
+}
+.detail-tab-content { display: none; }
+.detail-tab-content.active { display: block; }
+
+/* ── Hash Display ── */
+.hash-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0;
+    font-size: 0.75rem;
+}
+.hash-label {
+    font-weight: 700;
+    color: var(--text-muted, #8b949e);
+    min-width: 48px;
+    flex-shrink: 0;
+}
+.hash-value {
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    color: #d2a8ff;
+    word-break: break-all;
+    flex: 1;
+}
+
+/* ── Tags input ── */
+.tags-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    padding: 0.35rem;
+    background: var(--bg-tertiary, #1a1a2e);
+    border: 1px solid var(--border-color, #333);
+    border-radius: 6px;
+    min-height: 38px;
+    cursor: text;
+}
+.tags-container:focus-within {
+    border-color: var(--color-accent, #58a6ff);
+    box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.15);
+}
+.tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    background: rgba(88, 166, 255, 0.15);
+    color: var(--color-accent, #58a6ff);
+    border: 1px solid rgba(88, 166, 255, 0.3);
+}
+.tag-chip .tag-remove {
+    cursor: pointer;
+    opacity: 0.7;
+    font-size: 0.7rem;
+}
+.tag-chip .tag-remove:hover { opacity: 1; }
+.tags-container input {
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text-primary, #e0e0e0);
+    font-size: 0.85rem;
+    flex: 1;
+    min-width: 80px;
+    padding: 0.15rem 0.3rem;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Stats Cards -->
+<div class="row g-3 mb-4">
+    <div class="col-xl-3 col-sm-6">
+        <div class="stat-card stat-card-primary">
+            <div class="stat-icon"><i class="bi bi-binoculars-fill"></i></div>
+            <div class="stat-info">
+                <div class="stat-value" id="statTotal">{{ stats.total | default(0) }}</div>
+                <div class="stat-label">Total</div>
+            </div>
+            <div class="stat-icon-bg"><i class="bi bi-binoculars-fill"></i></div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-sm-6">
+        <div class="stat-card stat-card-primary">
+            <div class="stat-icon"><i class="bi bi-arrow-repeat"></i></div>
+            <div class="stat-info">
+                <div class="stat-value" id="statActive">{{ stats.active | default(0) }}</div>
+                <div class="stat-label">Active</div>
+            </div>
+            <div class="stat-icon-bg"><i class="bi bi-arrow-repeat"></i></div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-sm-6">
+        <div class="stat-card stat-card-success">
+            <div class="stat-icon"><i class="bi bi-check-circle-fill"></i></div>
+            <div class="stat-info">
+                <div class="stat-value" id="statCompleted">{{ stats.completed | default(0) }}</div>
+                <div class="stat-label">Completed</div>
+            </div>
+            <div class="stat-icon-bg"><i class="bi bi-check-circle-fill"></i></div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-sm-6">
+        <div class="stat-card stat-card-danger">
+            <div class="stat-icon"><i class="bi bi-x-octagon-fill"></i></div>
+            <div class="stat-info">
+                <div class="stat-value" id="statFailed">{{ stats.failed | default(0) }}</div>
+                <div class="stat-label">Failed</div>
+            </div>
+            <div class="stat-icon-bg"><i class="bi bi-x-octagon-fill"></i></div>
+        </div>
+    </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="card mb-4">
+    <div class="card-body py-2">
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <label class="text-muted mb-0 small">Filter:</label>
+            <select id="statusFilter" class="form-select form-select-sm" style="width:auto;" onchange="Investigations.loadSessions()">
+                <option value="">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+            </select>
+            <div class="inv-search-wrap">
+                <i class="bi bi-search"></i>
+                <input type="text" id="goalSearchInput" class="inv-search-input" placeholder="Search by goal..." oninput="Investigations.filterByGoal()">
+            </div>
+            <div class="view-toggle btn-group ms-auto" role="group">
+                <button type="button" class="btn active" id="viewTableBtn" onclick="Investigations.setView('table')" title="Table view">
+                    <i class="bi bi-list-ul"></i>
+                </button>
+                <button type="button" class="btn" id="viewCardsBtn" onclick="Investigations.setView('cards')" title="Cards view">
+                    <i class="bi bi-grid-3x3-gap"></i>
+                </button>
+            </div>
+            <button class="btn btn-sm btn-ghost" onclick="Investigations.loadSessions()">
+                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Sessions Table View -->
+<div class="card" id="tableViewContainer">
+    <div class="card-header d-flex align-items-center justify-content-between">
+        <h6 class="mb-0"><i class="bi bi-list-ul me-2 text-accent"></i>Investigation Sessions</h6>
+    </div>
+    <!-- Bulk Actions Bar -->
+    <div class="bulk-actions-bar" id="bulkActionsBar">
+        <input type="checkbox" class="bulk-check" id="selectAllCheck" onchange="Investigations.toggleSelectAll(this)" title="Select all">
+        <span id="selectedCount">0</span> selected
+        <button class="btn btn-sm btn-outline-danger" onclick="Investigations.deleteSelected()">
+            <i class="bi bi-trash me-1"></i>Delete Selected
+        </button>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead>
+                    <tr>
+                        <th style="width:32px;"><input type="checkbox" class="bulk-check" id="headerSelectAll" onchange="Investigations.toggleSelectAll(this)" title="Select all"></th>
+                        <th style="width:40px;"></th>
+                        <th>Session ID</th>
+                        <th>Goal</th>
+                        <th>Status</th>
+                        <th>Steps</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="sessionsBody">
+                    <tr>
+                        <td colspan="8" class="text-center py-5 text-muted">
+                            <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>
+                            Loading sessions...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Sessions Card View -->
+<div id="cardViewContainer" style="display:none;">
+    <div class="inv-card-grid" id="sessionsCardGrid">
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>Loading sessions...
+        </div>
+    </div>
+</div>
+
+<!-- New Investigation Modal -->
+<div class="modal fade" id="newInvestigationModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="background:var(--bg-secondary);border-color:var(--border-color);">
+            <div class="modal-header border-bottom" style="border-color:var(--border-color)!important;">
+                <h5 class="modal-title"><i class="bi bi-binoculars me-2 text-accent"></i>New Investigation</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Playbook Quick-Select -->
+                <div class="mb-3">
+                    <label class="form-label">Playbook <small class="text-muted">(optional)</small></label>
+                    <select id="playbookSelect" class="form-select form-select-sm"
+                        style="background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-primary);"
+                        onchange="Investigations.applyPlaybook(this)">
+                        <option value="">-- Select a playbook --</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Investigation Goal</label>
+                    <textarea id="investigationGoal" class="form-control" rows="4"
+                        placeholder="Describe what you want the agent to investigate, e.g.: Investigate IP 192.168.1.100 for potential C2 activity"
+                        style="background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-primary);"></textarea>
+                </div>
+                <div class="row g-3 mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Max Steps</label>
+                        <input type="number" id="investigationMaxSteps" class="form-control" value="50" min="1" max="100"
+                            style="background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-primary);">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Priority</label>
+                        <select id="investigationPriority" class="form-select"
+                            style="background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-primary);">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                            <option value="critical">Critical</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Tags <small class="text-muted">(press Enter to add)</small></label>
+                    <div class="tags-container" id="tagsContainer" onclick="document.getElementById('tagInput').focus()">
+                        <input type="text" id="tagInput" placeholder="e.g. malware, phishing..." onkeydown="Investigations.handleTagKey(event)">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-top" style="border-color:var(--border-color)!important;">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-accent btn-sm" onclick="Investigations.startNew()" id="startInvestigationBtn">
+                    <i class="bi bi-play-fill me-1"></i>Start Investigation
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Session Detail Side Panel (no Bootstrap modal - prevents page freeze) -->
+<div id="sessionDetailPanel" style="
+    display:none; position:fixed; top:0; right:0; width:55%; max-width:750px; height:100vh;
+    background:var(--bg-secondary, #161b22); border-left:2px solid var(--border-color, #30363d);
+    z-index:9999; box-shadow:-8px 0 30px rgba(0,0,0,0.5); transition:transform 0.25s ease;
+    transform:translateX(100%); overflow:hidden; flex-direction:column;
+">
+    <div style="display:flex; align-items:center; justify-content:space-between; padding:0.75rem 1rem;
+         border-bottom:1px solid var(--border-color, #30363d); flex-shrink:0;">
+        <h5 style="margin:0; font-size:1rem;">
+            <i class="bi bi-info-circle me-2" style="color:var(--color-accent, #58a6ff);"></i>Session Detail
+        </h5>
+        <button id="closeDetailPanel" style="
+            background:none; border:none; color:#fff; font-size:1.5rem; cursor:pointer;
+            padding:0 0.25rem; line-height:1; opacity:0.7;
+        " title="Close">&times;</button>
+    </div>
+    <div id="sessionDetailBody" style="flex:1; overflow-y:auto; padding:1rem;">
+        <p class="text-muted">Loading...</p>
+    </div>
+    <div id="sessionDetailFooter" style="padding:0.5rem 1rem; border-top:1px solid var(--border-color, #30363d); flex-shrink:0;">
+    </div>
+</div>
+<div id="detailPanelOverlay" style="
+    display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+    background:rgba(0,0,0,0.4); z-index:9998; cursor:pointer;
+"></div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content" style="background:var(--bg-secondary);border-color:var(--border-color);">
+            <div class="modal-header border-bottom" style="border-color:var(--border-color)!important;">
+                <h6 class="modal-title text-danger"><i class="bi bi-exclamation-triangle me-2"></i>Confirm Delete</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="deleteConfirmBody">
+                <p class="mb-0">Are you sure you want to delete the selected investigation(s)? This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer border-top" style="border-color:var(--border-color)!important;">
+                <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-sm btn-danger" id="confirmDeleteBtn" onclick="Investigations.confirmDelete()">
+                    <i class="bi bi-trash me-1"></i>Delete
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var Investigations = (function() {
+
+    var _allSessions = [];
+    var _currentView = 'table';
+    var _selectedIds = [];
+    var _currentDetailSid = null;
+    var _tags = [];
+
+    // Helper: create an element with classes and optional text
+    function el(tag, className, text) {
+        var e = document.createElement(tag);
+        if (className) e.className = className;
+        if (text) e.textContent = text;
+        return e;
+    }
+
+    // Helper: create an icon element
+    function icon(cls) {
+        var i = document.createElement('i');
+        i.className = cls;
+        return i;
+    }
+
+    // Helper: create a status badge element
+    function makeStatusBadge(status) {
+        var badge = document.createElement('span');
+        var st = (status || 'unknown').toLowerCase();
+        var badgeIcon;
+        if (st === 'active' || st === 'running') {
+            badge.className = 'badge bg-primary-subtle text-primary';
+            badgeIcon = icon('bi bi-arrow-repeat me-1');
+            badge.appendChild(badgeIcon);
+            badge.appendChild(document.createTextNode('Active'));
+        } else if (st === 'completed' || st === 'complete') {
+            badge.className = 'badge bg-success-subtle text-success';
+            badgeIcon = icon('bi bi-check-circle me-1');
+            badge.appendChild(badgeIcon);
+            badge.appendChild(document.createTextNode('Completed'));
+        } else if (st === 'failed' || st === 'error') {
+            badge.className = 'badge bg-danger-subtle text-danger';
+            badgeIcon = icon('bi bi-x-circle me-1');
+            badge.appendChild(badgeIcon);
+            badge.appendChild(document.createTextNode('Failed'));
+        } else {
+            badge.className = 'badge bg-secondary';
+            badge.textContent = st;
+        }
+        return badge;
+    }
+
+    function loadSessions() {
+        var filter = document.getElementById('statusFilter').value;
+        var url = '/api/agent/sessions';
+        if (filter) url += '?status=' + encodeURIComponent(filter);
+
+        fetch(url)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var sessions = data.sessions || data || [];
+                _allSessions = sessions;
+                _selectedIds = [];
+                updateBulkBar();
+                applyGoalFilter();
+                updateStats(sessions);
+            })
+            .catch(function(err) {
+                var body = document.getElementById('sessionsBody');
+                while (body.firstChild) body.removeChild(body.firstChild);
+                var tr = document.createElement('tr');
+                var td = document.createElement('td');
+                td.colSpan = 8;
+                td.className = 'text-center py-4 text-danger';
+                td.textContent = 'Failed to load sessions: ' + err.message;
+                tr.appendChild(td);
+                body.appendChild(tr);
+            });
+    }
+
+    function applyGoalFilter() {
+        var query = (document.getElementById('goalSearchInput').value || '').toLowerCase().trim();
+        var filtered;
+        if (!query) {
+            filtered = _allSessions;
+        } else {
+            filtered = _allSessions.filter(function(s) {
+                return (s.goal || '').toLowerCase().indexOf(query) !== -1;
+            });
+        }
+        renderSessions(filtered);
+        renderCards(filtered);
+    }
+
+    function filterByGoal() {
+        applyGoalFilter();
+    }
+
+    function setView(view) {
+        _currentView = view;
+        var tableBtn = document.getElementById('viewTableBtn');
+        var cardsBtn = document.getElementById('viewCardsBtn');
+        var tableCont = document.getElementById('tableViewContainer');
+        var cardsCont = document.getElementById('cardViewContainer');
+        if (view === 'table') {
+            tableBtn.classList.add('active');
+            cardsBtn.classList.remove('active');
+            tableCont.style.display = '';
+            cardsCont.style.display = 'none';
+        } else {
+            tableBtn.classList.remove('active');
+            cardsBtn.classList.add('active');
+            tableCont.style.display = 'none';
+            cardsCont.style.display = '';
+        }
+    }
+
+    function renderSessions(sessions) {
+        var body = document.getElementById('sessionsBody');
+        while (body.firstChild) body.removeChild(body.firstChild);
+
+        if (!sessions.length) {
+            var tr = document.createElement('tr');
+            var td = document.createElement('td');
+            td.colSpan = 8;
+            td.className = 'text-center py-5 text-muted';
+            td.appendChild(icon('bi bi-inbox fs-1 d-block mb-2 opacity-50'));
+            td.appendChild(document.createTextNode('No investigation sessions found. Start a new one!'));
+            tr.appendChild(td);
+            body.appendChild(tr);
+            return;
+        }
+
+        sessions.forEach(function(s) {
+            var sid = s.session_id || s.id || '';
+            var tr = document.createElement('tr');
+            tr.style.cursor = 'pointer';
+            tr.setAttribute('data-sid', sid);
+
+            // Checkbox
+            var tdCheck = document.createElement('td');
+            tdCheck.addEventListener('click', function(e) { e.stopPropagation(); });
+            var chk = document.createElement('input');
+            chk.type = 'checkbox';
+            chk.className = 'bulk-check row-check';
+            chk.value = sid;
+            chk.addEventListener('change', function() { onRowCheckChange(); });
+            tdCheck.appendChild(chk);
+            tr.appendChild(tdCheck);
+
+            // Expand toggle
+            var tdToggle = document.createElement('td');
+            var toggleBtn = document.createElement('button');
+            toggleBtn.className = 'btn btn-sm btn-ghost p-0';
+            toggleBtn.title = 'Expand details';
+            var toggleIcon = icon('bi bi-chevron-right');
+            toggleBtn.appendChild(toggleIcon);
+            toggleBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                toggleDetail(sid, tr, toggleIcon);
+            });
+            tdToggle.appendChild(toggleBtn);
+            tr.appendChild(tdToggle);
+
+            // Session ID
+            var tdId = document.createElement('td');
+            var code = document.createElement('code');
+            code.className = 'text-accent';
+            code.textContent = sid.substring(0, 12);
+            tdId.appendChild(code);
+            tr.appendChild(tdId);
+
+            // Goal
+            var tdGoal = document.createElement('td');
+            tdGoal.className = 'text-truncate';
+            tdGoal.style.maxWidth = '300px';
+            tdGoal.title = s.goal || '';
+            tdGoal.textContent = (s.goal || 'N/A').substring(0, 80);
+            tr.appendChild(tdGoal);
+
+            // Status badge
+            var tdStatus = document.createElement('td');
+            tdStatus.appendChild(makeStatusBadge(s.status));
+            tr.appendChild(tdStatus);
+
+            // Steps
+            var tdSteps = document.createElement('td');
+            tdSteps.textContent = s.steps !== undefined ? s.steps : (s.step_count !== undefined ? s.step_count : '-');
+            tr.appendChild(tdSteps);
+
+            // Created
+            var tdCreated = document.createElement('td');
+            var small = el('small', 'text-muted', s.created_at || s.created || '-');
+            tdCreated.appendChild(small);
+            tr.appendChild(tdCreated);
+
+            // Actions
+            var tdActions = document.createElement('td');
+            var viewBtn = document.createElement('a');
+            viewBtn.href = '/agent/chat?session=' + encodeURIComponent(sid);
+            viewBtn.className = 'btn btn-sm btn-ghost';
+            viewBtn.title = 'Open in chat';
+            viewBtn.appendChild(icon('bi bi-chat-dots'));
+            tdActions.appendChild(viewBtn);
+
+            var detailBtn = document.createElement('button');
+            detailBtn.className = 'btn btn-sm btn-ghost';
+            detailBtn.title = 'View detail';
+            detailBtn.appendChild(icon('bi bi-eye'));
+            detailBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                viewDetail(sid);
+            });
+            tdActions.appendChild(detailBtn);
+            tr.appendChild(tdActions);
+
+            body.appendChild(tr);
+        });
+    }
+
+    function renderCards(sessions) {
+        var grid = document.getElementById('sessionsCardGrid');
+        while (grid.firstChild) grid.removeChild(grid.firstChild);
+
+        if (!sessions.length) {
+            var empty = el('div', 'text-center text-muted py-5');
+            empty.style.gridColumn = '1 / -1';
+            empty.appendChild(icon('bi bi-inbox fs-1 d-block mb-2 opacity-50'));
+            empty.appendChild(document.createTextNode('No investigation sessions found.'));
+            grid.appendChild(empty);
+            return;
+        }
+
+        sessions.forEach(function(s) {
+            var sid = s.session_id || s.id || '';
+            var status = (s.status || 'unknown').toLowerCase();
+
+            var card = el('div', 'inv-session-card');
+
+            // Goal
+            var goalDiv = el('div', 'card-goal', s.goal || 'N/A');
+            goalDiv.title = s.goal || '';
+            card.appendChild(goalDiv);
+
+            // Meta
+            var metaDiv = el('div', 'card-meta');
+
+            // Status badge
+            metaDiv.appendChild(makeStatusBadge(s.status));
+
+            // Steps
+            var stepsSpan = document.createElement('span');
+            stepsSpan.appendChild(icon('bi bi-signpost-split me-1'));
+            stepsSpan.appendChild(document.createTextNode(
+                (s.steps !== undefined ? s.steps : (s.step_count !== undefined ? s.step_count : '-')) + ' steps'
+            ));
+            metaDiv.appendChild(stepsSpan);
+
+            // Duration
+            if (s.duration) {
+                var durSpan = document.createElement('span');
+                durSpan.appendChild(icon('bi bi-clock me-1'));
+                durSpan.appendChild(document.createTextNode(s.duration));
+                metaDiv.appendChild(durSpan);
+            }
+
+            // Session ID
+            var idSpan = document.createElement('span');
+            var idCode = document.createElement('code');
+            idCode.className = 'text-accent';
+            idCode.style.fontSize = '0.75rem';
+            idCode.textContent = sid.substring(0, 10);
+            idSpan.appendChild(idCode);
+            metaDiv.appendChild(idSpan);
+
+            card.appendChild(metaDiv);
+
+            // Actions
+            var actDiv = el('div', 'card-actions');
+
+            var chatBtn = document.createElement('a');
+            chatBtn.href = '/agent/chat?session=' + encodeURIComponent(sid);
+            chatBtn.className = 'btn btn-sm btn-outline-primary flex-fill';
+            chatBtn.appendChild(icon('bi bi-chat-dots me-1'));
+            chatBtn.appendChild(document.createTextNode('Open in Chat'));
+            actDiv.appendChild(chatBtn);
+
+            var detBtn = el('button', 'btn btn-sm btn-outline-secondary flex-fill');
+            detBtn.appendChild(icon('bi bi-eye me-1'));
+            detBtn.appendChild(document.createTextNode('View Detail'));
+            detBtn.addEventListener('click', function() { viewDetail(sid); });
+            actDiv.appendChild(detBtn);
+
+            card.appendChild(actDiv);
+            grid.appendChild(card);
+        });
+    }
+
+    function onRowCheckChange() {
+        var checks = document.querySelectorAll('.row-check');
+        _selectedIds = [];
+        checks.forEach(function(c) {
+            if (c.checked) _selectedIds.push(c.value);
+        });
+        updateBulkBar();
+    }
+
+    function toggleSelectAll(masterCheck) {
+        var checks = document.querySelectorAll('.row-check');
+        checks.forEach(function(c) { c.checked = masterCheck.checked; });
+        var hdr = document.getElementById('headerSelectAll');
+        var bar = document.getElementById('selectAllCheck');
+        if (hdr) hdr.checked = masterCheck.checked;
+        if (bar) bar.checked = masterCheck.checked;
+        onRowCheckChange();
+    }
+
+    function updateBulkBar() {
+        var bar = document.getElementById('bulkActionsBar');
+        var countEl = document.getElementById('selectedCount');
+        if (_selectedIds.length > 0) {
+            bar.classList.add('visible');
+            countEl.textContent = _selectedIds.length;
+        } else {
+            bar.classList.remove('visible');
+            countEl.textContent = '0';
+        }
+    }
+
+    function deleteSelected() {
+        if (!_selectedIds.length) return;
+        var confirmBody = document.getElementById('deleteConfirmBody');
+        while (confirmBody.firstChild) confirmBody.removeChild(confirmBody.firstChild);
+        var p = document.createElement('p');
+        p.className = 'mb-0';
+        p.appendChild(document.createTextNode('Are you sure you want to delete '));
+        var strong = document.createElement('strong');
+        strong.textContent = _selectedIds.length;
+        p.appendChild(strong);
+        p.appendChild(document.createTextNode(' selected investigation(s)? This action cannot be undone.'));
+        confirmBody.appendChild(p);
+        var modal = bootstrap.Modal.getOrCreateInstance(document.getElementById('deleteConfirmModal'));
+        modal.show();
+    }
+
+    function confirmDelete() {
+        var ids = _selectedIds.slice();
+        var btn = document.getElementById('confirmDeleteBtn');
+        btn.disabled = true;
+        btn.textContent = 'Deleting...';
+
+        var promises = ids.map(function(sid) {
+            return fetch('/api/agent/sessions/' + encodeURIComponent(sid), { method: 'DELETE' })
+                .then(function(r) { return r.json(); })
+                .catch(function() { return { error: true }; });
+        });
+
+        Promise.all(promises).then(function() {
+            btn.disabled = false;
+            while (btn.firstChild) btn.removeChild(btn.firstChild);
+            btn.appendChild(icon('bi bi-trash me-1'));
+            btn.appendChild(document.createTextNode('Delete'));
+            var modalEl = document.getElementById('deleteConfirmModal');
+            var modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+            _selectedIds = [];
+            updateBulkBar();
+            loadSessions();
+        });
+    }
+
+    function toggleDetail(sid, parentRow, toggleIcon) {
+        var existing = parentRow.nextElementSibling;
+        if (existing && existing.classList.contains('detail-row')) {
+            existing.remove();
+            toggleIcon.className = 'bi bi-chevron-right';
+            return;
+        }
+        toggleIcon.className = 'bi bi-chevron-down';
+        var detailRow = document.createElement('tr');
+        detailRow.className = 'detail-row';
+        var td = document.createElement('td');
+        td.colSpan = 8;
+        td.style.background = 'var(--bg-tertiary)';
+        td.style.padding = '1rem';
+        td.textContent = 'Loading...';
+        detailRow.appendChild(td);
+        parentRow.parentNode.insertBefore(detailRow, parentRow.nextSibling);
+
+        fetch('/api/agent/sessions/' + encodeURIComponent(sid))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                while (td.firstChild) td.removeChild(td.firstChild);
+                var goalP = document.createElement('p');
+                var goalStrong = document.createElement('strong');
+                goalStrong.textContent = 'Goal: ';
+                goalP.appendChild(goalStrong);
+                goalP.appendChild(document.createTextNode(data.goal || 'N/A'));
+                td.appendChild(goalP);
+
+                if (data.result || data.summary) {
+                    var resP = document.createElement('p');
+                    var resStrong = document.createElement('strong');
+                    resStrong.textContent = 'Result: ';
+                    resP.appendChild(resStrong);
+                    resP.appendChild(document.createTextNode(data.result || data.summary));
+                    td.appendChild(resP);
+                }
+
+                var history = data.history || data.messages || [];
+                if (history.length) {
+                    var stepsTitle = document.createElement('strong');
+                    stepsTitle.textContent = 'Messages (' + history.length + '):';
+                    td.appendChild(stepsTitle);
+                    var list = document.createElement('ul');
+                    list.className = 'mt-2 mb-0';
+                    list.style.fontSize = '0.85rem';
+                    history.slice(0, 10).forEach(function(m) {
+                        var li = document.createElement('li');
+                        var roleSpan = document.createElement('strong');
+                        roleSpan.textContent = (m.role || 'system') + ': ';
+                        li.appendChild(roleSpan);
+                        li.appendChild(document.createTextNode((m.content || '').substring(0, 200)));
+                        list.appendChild(li);
+                    });
+                    td.appendChild(list);
+                }
+            })
+            .catch(function() {
+                td.textContent = 'Failed to load detail.';
+            });
+    }
+
+    // Side panel open/close (no Bootstrap modal - zero freeze risk)
+    function openDetailPanel() {
+        var panel = document.getElementById('sessionDetailPanel');
+        var overlay = document.getElementById('detailPanelOverlay');
+        panel.style.display = 'flex';
+        overlay.style.display = 'block';
+        requestAnimationFrame(function() {
+            panel.style.transform = 'translateX(0)';
+        });
+    }
+
+    function closeDetailPanel() {
+        var panel = document.getElementById('sessionDetailPanel');
+        var overlay = document.getElementById('detailPanelOverlay');
+        panel.style.transform = 'translateX(100%)';
+        setTimeout(function() {
+            panel.style.display = 'none';
+            overlay.style.display = 'none';
+        }, 280);
+    }
+
+    // Close button & overlay click
+    document.getElementById('closeDetailPanel').addEventListener('click', closeDetailPanel);
+    document.getElementById('detailPanelOverlay').addEventListener('click', closeDetailPanel);
+    // ESC key
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeDetailPanel();
+    });
+
+    // ── Helper: copy text to clipboard ──
+    function copyToClipboard(text, btnEl) {
+        navigator.clipboard.writeText(text).then(function() {
+            var orig = btnEl.innerHTML;
+            btnEl.innerHTML = '<i class="bi bi-check"></i>';
+            setTimeout(function() { btnEl.innerHTML = orig; }, 1200);
+        }).catch(function() {});
+    }
+
+    // ── Helper: build a threat score gauge widget ──
+    function buildScoreGauge(score, maxScore) {
+        maxScore = maxScore || 100;
+        var pct = Math.min(100, Math.max(0, (score / maxScore) * 100));
+        var gaugeClass = pct <= 30 ? 'gauge-green' : pct <= 70 ? 'gauge-yellow' : 'gauge-red';
+        var colorClass = pct <= 30 ? 'text-green' : pct <= 70 ? 'text-yellow' : 'text-red';
+
+        var wrap = document.createElement('div');
+        wrap.style.cssText = 'display:flex; align-items:center; gap:0.75rem;';
+
+        var scoreDisp = document.createElement('div');
+        scoreDisp.className = 'score-display';
+        var numSpan = el('span', 'score-number ' + colorClass, String(score));
+        var maxSpan = el('span', 'score-max', '/ ' + maxScore);
+        scoreDisp.appendChild(numSpan);
+        scoreDisp.appendChild(maxSpan);
+        wrap.appendChild(scoreDisp);
+
+        var gaugeOuter = el('div', 'threat-gauge');
+        gaugeOuter.style.flex = '1';
+        var gaugeFill = el('div', 'threat-gauge-fill ' + gaugeClass);
+        gaugeFill.style.width = pct + '%';
+        gaugeOuter.appendChild(gaugeFill);
+        wrap.appendChild(gaugeOuter);
+
+        return wrap;
+    }
+
+    // ── Helper: build a verdict badge ──
+    function buildVerdictBadge(verdict) {
+        var v = (verdict || '').toUpperCase();
+        var cls = 'verdict-clean';
+        var iconCls = 'bi-shield-check';
+        if (v === 'MALICIOUS') { cls = 'verdict-malicious'; iconCls = 'bi-shield-exclamation'; }
+        else if (v === 'SUSPICIOUS') { cls = 'verdict-suspicious'; iconCls = 'bi-shield-fill-exclamation'; }
+        var badge = el('span', 'verdict-badge ' + cls);
+        badge.appendChild(icon('bi ' + iconCls + ' me-1'));
+        badge.appendChild(document.createTextNode(v || 'UNKNOWN'));
+        return badge;
+    }
+
+    // ── Helper: build an info card ──
+    function buildInfoCard(title, iconCls, rows) {
+        var card = el('div', 'info-card');
+        var titleDiv = el('div', 'info-card-title');
+        if (iconCls) titleDiv.appendChild(icon('bi ' + iconCls));
+        titleDiv.appendChild(document.createTextNode(title));
+        card.appendChild(titleDiv);
+        rows.forEach(function(r) {
+            if (r.value === null || r.value === undefined || r.value === '') return;
+            var row = el('div', 'info-row');
+            row.appendChild(el('span', 'info-label', r.label));
+            var valSpan = el('span', 'info-value');
+            if (r.color) valSpan.style.color = r.color;
+            valSpan.textContent = String(r.value);
+            row.appendChild(valSpan);
+            card.appendChild(row);
+        });
+        return card;
+    }
+
+    // ── Helper: build auth indicator ──
+    function buildAuthIndicator(label, value) {
+        var v = (value || '').toLowerCase();
+        var cls = v === 'pass' ? 'auth-pass' : (v === 'fail' || v === 'none' || v === 'softfail' || v === 'hardfail') ? 'auth-fail' : 'auth-unknown';
+        var iconCls = v === 'pass' ? 'bi-check-circle-fill' : (cls === 'auth-fail') ? 'bi-x-circle-fill' : 'bi-question-circle-fill';
+        var indicator = el('span', 'auth-indicator ' + cls);
+        indicator.appendChild(icon('bi ' + iconCls + ' me-1'));
+        indicator.appendChild(document.createTextNode(label + ': ' + (value || 'N/A')));
+        return indicator;
+    }
+
+    function viewDetail(sid) {
+        _currentDetailSid = sid;
+        var detailBody = document.getElementById('sessionDetailBody');
+        var detailFooter = document.getElementById('sessionDetailFooter');
+        detailBody.innerHTML = '<p class="text-muted">Loading...</p>';
+        openDetailPanel();
+
+        fetch('/api/agent/sessions/' + encodeURIComponent(sid))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                while (detailBody.firstChild) detailBody.removeChild(detailBody.firstChild);
+
+                // Status banner with gradient
+                var st = (data.status || 'unknown').toLowerCase();
+                var bannerClass = 'status-unknown';
+                if (st === 'completed' || st === 'complete') bannerClass = 'status-completed';
+                else if (st === 'failed' || st === 'error') bannerClass = 'status-failed';
+                else if (st === 'active' || st === 'running') bannerClass = 'status-active';
+
+                var bannerIconClass = st === 'completed' || st === 'complete' ? 'bi-check-circle-fill' :
+                    st === 'failed' || st === 'error' ? 'bi-x-octagon-fill' :
+                    st === 'active' || st === 'running' ? 'bi-arrow-repeat' : 'bi-question-circle';
+
+                var banner = el('div', 'modal-status-banner ' + bannerClass);
+                var bannerLeft = document.createElement('span');
+                bannerLeft.appendChild(icon('bi ' + bannerIconClass + ' me-2'));
+                bannerLeft.appendChild(document.createTextNode((data.status || 'Unknown').toUpperCase()));
+                banner.appendChild(bannerLeft);
+                var bannerRight = document.createElement('span');
+                bannerRight.style.cssText = 'font-size:0.8rem;opacity:0.8;font-weight:normal;';
+                bannerRight.textContent = data.created_at || data.created || '';
+                banner.appendChild(bannerRight);
+                detailBody.appendChild(banner);
+
+                // ── Summary Card ──
+                var steps = data.steps || [];
+                var findings = data.findings || [];
+                if (typeof findings === 'string') {
+                    try { findings = JSON.parse(findings); } catch(e) { findings = []; }
+                }
+
+                var toolCounts = {};
+                var localCount = 0, mcpCount = 0, totalDurationMs = 0;
+                steps.forEach(function(step) {
+                    var tn = step.tool || step.tool_name || null;
+                    if (tn) {
+                        toolCounts[tn] = (toolCounts[tn] || 0) + 1;
+                        if (tn.indexOf('.') > 0) mcpCount++; else localCount++;
+                    }
+                    if (step.duration_ms) totalDurationMs += step.duration_ms;
+                });
+
+                // Detect final verdict/score from last investigate_ioc or similar step
+                var finalScore = null, finalVerdict = null;
+                for (var si = steps.length - 1; si >= 0; si--) {
+                    var stn = steps[si].tool || steps[si].tool_name || '';
+                    if (stn === 'investigate_ioc' || stn === 'analyze_malware' || stn === 'analyze_email') {
+                        var sRes;
+                        try { sRes = typeof steps[si].tool_result === 'string' ? JSON.parse(steps[si].tool_result) : steps[si].tool_result; } catch(e) { sRes = null; }
+                        if (sRes) {
+                            if (sRes.threat_score !== undefined) finalScore = sRes.threat_score;
+                            if (sRes.composite_score !== undefined) finalScore = sRes.composite_score;
+                            if (sRes.verdict) finalVerdict = sRes.verdict;
+                        }
+                        if (finalScore !== null || finalVerdict) break;
+                    }
+                }
+
+                var summaryCard = el('div', 'detail-summary-card');
+
+                // Total steps
+                var item1 = el('div', 'detail-summary-item');
+                item1.appendChild(el('div', 'summary-value text-blue', String(steps.length)));
+                item1.appendChild(el('div', 'summary-label', 'Steps'));
+                summaryCard.appendChild(item1);
+
+                // Local tools
+                var item2 = el('div', 'detail-summary-item');
+                item2.appendChild(el('div', 'summary-value text-green', String(localCount)));
+                item2.appendChild(el('div', 'summary-label', 'Local Tools'));
+                summaryCard.appendChild(item2);
+
+                // MCP tools
+                var item3 = el('div', 'detail-summary-item');
+                item3.appendChild(el('div', 'summary-value text-blue', String(mcpCount)));
+                item3.appendChild(el('div', 'summary-label', 'MCP Tools'));
+                summaryCard.appendChild(item3);
+
+                // Duration
+                var item4 = el('div', 'detail-summary-item');
+                var durStr = totalDurationMs >= 60000 ? (totalDurationMs / 60000).toFixed(1) + 'm' : (totalDurationMs / 1000).toFixed(1) + 's';
+                item4.appendChild(el('div', 'summary-value', durStr));
+                item4.appendChild(el('div', 'summary-label', 'Duration'));
+                summaryCard.appendChild(item4);
+
+                // Findings count
+                var item5 = el('div', 'detail-summary-item');
+                item5.appendChild(el('div', 'summary-value text-yellow', String(findings.length)));
+                item5.appendChild(el('div', 'summary-label', 'Findings'));
+                summaryCard.appendChild(item5);
+
+                // Verdict if available
+                if (finalVerdict) {
+                    var item6 = el('div', 'detail-summary-item');
+                    var verdictDiv = document.createElement('div');
+                    verdictDiv.appendChild(buildVerdictBadge(finalVerdict));
+                    item6.appendChild(verdictDiv);
+                    item6.appendChild(el('div', 'summary-label', 'Verdict'));
+                    summaryCard.appendChild(item6);
+                }
+
+                detailBody.appendChild(summaryCard);
+
+                // ── Tabbed Interface ──
+                var tabContainer = document.createElement('div');
+
+                // Tab headers
+                var tabHeaders = el('div', 'detail-tabs');
+                var tabNames = ['Overview', 'Steps', 'Findings'];
+                var tabIds = ['tab-overview', 'tab-steps', 'tab-findings'];
+                tabNames.forEach(function(name, tidx) {
+                    var tab = el('button', 'detail-tab' + (tidx === 0 ? ' active' : ''), name);
+                    if (name === 'Findings') tab.textContent = name + ' (' + findings.length + ')';
+                    if (name === 'Steps') tab.textContent = name + ' (' + steps.length + ')';
+                    tab.setAttribute('data-tab', tabIds[tidx]);
+                    tab.addEventListener('click', function() {
+                        tabHeaders.querySelectorAll('.detail-tab').forEach(function(t) { t.classList.remove('active'); });
+                        tab.classList.add('active');
+                        tabIds.forEach(function(id) {
+                            var tc = document.getElementById(id);
+                            if (tc) tc.classList.remove('active');
+                        });
+                        var target = document.getElementById(tab.getAttribute('data-tab'));
+                        if (target) target.classList.add('active');
+                    });
+                    tabHeaders.appendChild(tab);
+                });
+                tabContainer.appendChild(tabHeaders);
+
+                // ════════ TAB: Overview ════════
+                var tabOverview = el('div', 'detail-tab-content active');
+                tabOverview.id = 'tab-overview';
+
+                // Goal
+                tabOverview.appendChild(el('h6', '', 'Goal'));
+                tabOverview.appendChild(el('p', '', data.goal || 'N/A'));
+
+                // Final score gauge if present
+                if (finalScore !== null) {
+                    tabOverview.appendChild(el('h6', 'mt-3', 'Threat Score'));
+                    tabOverview.appendChild(buildScoreGauge(finalScore, 100));
+                }
+
+                // Result / Final answer
+                var resultText = data.result || data.summary || data.final_answer || '';
+                if (resultText) {
+                    var resH = el('h6', 'mt-3', 'Final Answer');
+                    tabOverview.appendChild(resH);
+                    var pre = document.createElement('pre');
+                    pre.style.cssText = 'background:var(--code-bg, #0d1117);padding:0.75rem;border-radius:6px;font-size:0.82rem;white-space:pre-wrap;max-height:300px;overflow-y:auto;line-height:1.5;color:var(--text-primary, #e0e0e0);';
+                    pre.textContent = resultText;
+                    tabOverview.appendChild(pre);
+                }
+
+                // Tool usage chips
+                var toolKeys = Object.keys(toolCounts);
+                if (toolKeys.length) {
+                    tabOverview.appendChild(el('h6', 'mt-3', 'Tools Used'));
+                    var toolList = el('div', 'tool-usage-list mb-3');
+                    toolKeys.sort(function(a, b) { return toolCounts[b] - toolCounts[a]; });
+                    toolKeys.forEach(function(name) {
+                        var chip = el('span', 'tool-usage-chip');
+                        var isMcp = name.indexOf('.') > 0;
+                        chip.appendChild(icon(isMcp ? 'bi bi-cloud' : 'bi bi-wrench'));
+                        chip.appendChild(document.createTextNode(' ' + name + ' '));
+                        var countSpan = el('span', 'tool-count', String(toolCounts[name]));
+                        chip.appendChild(countSpan);
+                        if (isMcp) { chip.style.borderColor = 'rgba(88,166,255,0.3)'; chip.style.color = '#58a6ff'; }
+                        toolList.appendChild(chip);
+                    });
+                    tabOverview.appendChild(toolList);
+                }
+
+                // Correlation button
+                var corrBtnDiv = el('div', 'mt-3');
+                var corrBtn = el('button', 'btn btn-outline-secondary btn-sm');
+                corrBtn.appendChild(icon('bi bi-diagram-3 me-1'));
+                corrBtn.appendChild(document.createTextNode('Fetch Correlation'));
+                corrBtn.addEventListener('click', function() {
+                    corrBtn.disabled = true;
+                    corrBtn.textContent = 'Loading...';
+                    fetch('/api/agent/correlation/' + encodeURIComponent(sid))
+                        .then(function(r) { return r.json(); })
+                        .then(function(corrData) {
+                            corrBtn.disabled = false;
+                            while (corrBtn.firstChild) corrBtn.removeChild(corrBtn.firstChild);
+                            corrBtn.appendChild(icon('bi bi-diagram-3 me-1'));
+                            corrBtn.appendChild(document.createTextNode('Fetch Correlation'));
+                            var prev = document.getElementById('correlationResults');
+                            if (prev) prev.remove();
+                            var corrDiv = el('div', 'mt-2');
+                            corrDiv.id = 'correlationResults';
+                            corrDiv.appendChild(el('h6', '', 'Correlation Results'));
+                            var corrPre = document.createElement('pre');
+                            corrPre.style.cssText = 'background:var(--code-bg, #0d1117);padding:0.75rem;border-radius:6px;font-size:0.8rem;white-space:pre-wrap;max-height:300px;overflow-y:auto;';
+                            corrPre.textContent = JSON.stringify(corrData.correlation || corrData, null, 2);
+                            corrDiv.appendChild(corrPre);
+                            corrBtnDiv.parentNode.insertBefore(corrDiv, corrBtnDiv.nextSibling);
+                        })
+                        .catch(function(err) {
+                            corrBtn.disabled = false;
+                            while (corrBtn.firstChild) corrBtn.removeChild(corrBtn.firstChild);
+                            corrBtn.appendChild(icon('bi bi-diagram-3 me-1'));
+                            corrBtn.appendChild(document.createTextNode('Fetch Correlation'));
+                            alert('Correlation failed: ' + err.message);
+                        });
+                });
+                corrBtnDiv.appendChild(corrBtn);
+                tabOverview.appendChild(corrBtnDiv);
+
+                tabContainer.appendChild(tabOverview);
+
+                // ════════ TAB: Steps ════════
+                var tabSteps = el('div', 'detail-tab-content');
+                tabSteps.id = 'tab-steps';
+
+                if (steps.length) {
+                    var timeline = el('div', 'enhanced-timeline');
+                    var PAGE_SIZE = 15;
+                    var _stepsShown = 0;
+
+                    // ── Rich tool result renderer for SOC analysts (ENHANCED) ──
+                    function renderToolResult(toolName, resultRaw) {
+                        var result;
+                        try { result = typeof resultRaw === 'string' ? JSON.parse(resultRaw) : resultRaw; } catch(e) { return null; }
+                        if (!result || typeof result !== 'object') return null;
+
+                        var container = document.createElement('div');
+                        container.style.cssText = 'margin-top:0.5rem; padding:0.6rem; background:rgba(0,0,0,0.25); border-radius:6px; font-size:0.78rem;';
+
+                        // Helper to add a labeled row
+                        function addRow(label, value, color) {
+                            var row = document.createElement('div');
+                            row.style.cssText = 'margin:2px 0; display:flex; gap:0.5rem;';
+                            var lbl = document.createElement('span');
+                            lbl.style.cssText = 'color:#8b949e; min-width:100px; flex-shrink:0;';
+                            lbl.textContent = label + ':';
+                            var val = document.createElement('span');
+                            val.style.cssText = 'color:' + (color || '#e6edf3') + '; word-break:break-all;';
+                            val.textContent = typeof value === 'object' ? JSON.stringify(value) : String(value);
+                            row.appendChild(lbl); row.appendChild(val);
+                            container.appendChild(row);
+                        }
+
+                        function addSection(title) {
+                            var h = document.createElement('div');
+                            h.style.cssText = 'color:var(--color-accent,#58a6ff); font-weight:600; margin-top:0.5rem; margin-bottom:0.25rem; font-size:0.75rem; text-transform:uppercase; letter-spacing:0.5px;';
+                            h.textContent = title;
+                            container.appendChild(h);
+                        }
+
+                        // Helper to add an HTML element directly
+                        function addElement(elem) {
+                            container.appendChild(elem);
+                        }
+
+                        // ──────── investigate_ioc result (ENHANCED) ────────
+                        if (toolName === 'investigate_ioc' && result.sources) {
+                            // IOC header
+                            addRow('IOC', result.ioc, '#58a6ff');
+                            addRow('Type', result.ioc_type);
+
+                            // Threat score gauge
+                            var scoreVal = result.threat_score || 0;
+                            addElement(buildScoreGauge(scoreVal, 100));
+
+                            // Verdict badge
+                            var verdictWrap = document.createElement('div');
+                            verdictWrap.style.cssText = 'margin:0.4rem 0;';
+                            verdictWrap.appendChild(buildVerdictBadge(result.verdict));
+                            addElement(verdictWrap);
+
+                            // Source summary line
+                            var srcSummary = el('div', '');
+                            srcSummary.style.cssText = 'margin:0.3rem 0; font-size:0.78rem; color:var(--text-primary, #e0e0e0);';
+                            var flagged = result.sources_flagged || 0;
+                            var checked = result.sources_checked || 0;
+                            srcSummary.innerHTML = '<i class="bi bi-flag-fill me-1" style="color:' + (flagged > 0 ? '#f85149' : '#3fb950') + ';"></i>' +
+                                '<strong>' + flagged + '</strong> / ' + checked + ' sources flagged';
+                            addElement(srcSummary);
+
+                            // C2 detection alert
+                            var sources = result.sources || {};
+                            var shodanData = sources.shodan || sources.Shodan || null;
+                            if (shodanData && shodanData.is_c2 === true) {
+                                var c2Alert = el('div', 'c2-alert');
+                                c2Alert.innerHTML = '<i class="bi bi-exclamation-triangle-fill"></i> <strong>C2 Server Detected</strong> - Shodan data indicates this host is a known Command & Control server';
+                                addElement(c2Alert);
+                            }
+
+                            // Compact source table
+                            addSection('Threat Intel Sources');
+                            var table = document.createElement('table');
+                            table.className = 'source-table';
+                            var thead = document.createElement('thead');
+                            var headerRow = document.createElement('tr');
+                            ['', 'Source', 'Status', 'Detail'].forEach(function(h) {
+                                var th = document.createElement('th');
+                                th.textContent = h;
+                                headerRow.appendChild(th);
+                            });
+                            thead.appendChild(headerRow);
+                            table.appendChild(thead);
+                            var tbody = document.createElement('tbody');
+
+                            Object.keys(sources).forEach(function(src) {
+                                var s = sources[src];
+                                var status = s.status || '?';
+                                var isFlagged = status === '\u2713' || s.detected || s.listed || s.is_tor;
+                                var isError = !!s.error;
+                                var detail = '';
+                                if (s.detections) detail = 'Detections: ' + s.detections;
+                                else if (s.confidence) detail = 'Confidence: ' + s.confidence + '%, Reports: ' + (s.reports || 0);
+                                else if (s.is_tor) detail = 'Tor Exit Node';
+                                else if (s.listed) detail = 'LISTED';
+                                else if (s.ports) detail = 'Ports: ' + (Array.isArray(s.ports) ? s.ports.join(', ') : s.ports);
+                                else if (s.message) detail = s.message;
+                                else if (s.error) detail = s.error;
+                                else detail = 'No data';
+
+                                var tr = document.createElement('tr');
+
+                                // Status icon
+                                var tdIcon = document.createElement('td');
+                                tdIcon.style.textAlign = 'center';
+                                var statusIcon = document.createElement('span');
+                                statusIcon.className = 'source-status-icon ' + (isFlagged ? 'flagged' : isError ? 'error' : 'clean');
+                                statusIcon.innerHTML = isFlagged ? '<i class="bi bi-exclamation-triangle-fill"></i>' :
+                                    isError ? '<i class="bi bi-dash-circle"></i>' : '<i class="bi bi-check-circle-fill"></i>';
+                                tdIcon.appendChild(statusIcon);
+                                tr.appendChild(tdIcon);
+
+                                // Source name
+                                var tdSrc = document.createElement('td');
+                                tdSrc.style.fontWeight = '600';
+                                tdSrc.textContent = src;
+                                tr.appendChild(tdSrc);
+
+                                // Status text
+                                var tdStatus = document.createElement('td');
+                                tdStatus.style.color = isFlagged ? '#f85149' : isError ? '#8b949e' : '#3fb950';
+                                tdStatus.textContent = isFlagged ? 'FLAGGED' : isError ? 'ERROR' : 'CLEAN';
+                                tr.appendChild(tdStatus);
+
+                                // Detail
+                                var tdDetail = document.createElement('td');
+                                tdDetail.textContent = detail;
+                                tr.appendChild(tdDetail);
+
+                                tbody.appendChild(tr);
+                            });
+                            table.appendChild(tbody);
+                            addElement(table);
+                        }
+
+                        // ──────── analyze_malware result (ENHANCED) ────────
+                        else if (toolName === 'analyze_malware') {
+                            // File info card
+                            var fileInfo = result.file_info || {};
+                            addElement(buildInfoCard('File Information', 'bi-file-earmark-binary', [
+                                { label: 'Name', value: fileInfo.name || 'N/A' },
+                                { label: 'Type', value: result.file_type || fileInfo.type || 'N/A' },
+                                { label: 'Size', value: (fileInfo.size_mb || fileInfo.size || 0) + (fileInfo.size_mb ? ' MB' : ' bytes') },
+                                { label: 'Magic', value: fileInfo.magic || '' }
+                            ]));
+
+                            // Hashes with copy buttons
+                            var hashes = result.hashes || {};
+                            if (hashes.md5 || hashes.sha1 || hashes.sha256) {
+                                addSection('File Hashes');
+                                ['md5', 'sha1', 'sha256'].forEach(function(algo) {
+                                    if (!hashes[algo]) return;
+                                    var hashRow = el('div', 'hash-row');
+                                    hashRow.appendChild(el('span', 'hash-label', algo.toUpperCase()));
+                                    hashRow.appendChild(el('span', 'hash-value', hashes[algo]));
+                                    var cpBtn = el('button', 'copy-btn');
+                                    cpBtn.innerHTML = '<i class="bi bi-clipboard"></i>';
+                                    cpBtn.title = 'Copy ' + algo;
+                                    (function(val, btn) {
+                                        btn.addEventListener('click', function() { copyToClipboard(val, btn); });
+                                    })(hashes[algo], cpBtn);
+                                    hashRow.appendChild(cpBtn);
+                                    container.appendChild(hashRow);
+                                });
+                            }
+
+                            // Score gauge
+                            addSection('Threat Score');
+                            var mwScore = result.composite_score || 0;
+                            addElement(buildScoreGauge(mwScore, 100));
+                            var mwVerdictWrap = document.createElement('div');
+                            mwVerdictWrap.style.cssText = 'margin:0.4rem 0;';
+                            mwVerdictWrap.appendChild(buildVerdictBadge(result.verdict));
+                            addElement(mwVerdictWrap);
+
+                            // PE Analysis
+                            var pe = ((result.static_analysis || {}).pe_analysis || {});
+                            if (pe.sections && pe.sections.length) {
+                                addSection('PE Sections');
+                                var secTable = document.createElement('table');
+                                secTable.className = 'source-table';
+                                var secHead = document.createElement('thead');
+                                var secHR = document.createElement('tr');
+                                ['Section', 'Virtual Size', 'Entropy'].forEach(function(h) {
+                                    var th = document.createElement('th'); th.textContent = h; secHR.appendChild(th);
+                                });
+                                secHead.appendChild(secHR);
+                                secTable.appendChild(secHead);
+                                var secBody = document.createElement('tbody');
+                                pe.sections.forEach(function(sec) {
+                                    var tr = document.createElement('tr');
+                                    var td1 = document.createElement('td'); td1.style.fontWeight = '600'; td1.textContent = sec.name || '?';
+                                    var td2 = document.createElement('td'); td2.textContent = sec.virtual_size || '?';
+                                    var td3 = document.createElement('td');
+                                    var entropy = sec.entropy ? sec.entropy.toFixed(2) : '?';
+                                    td3.textContent = entropy;
+                                    if (sec.entropy && sec.entropy > 7.0) td3.style.color = '#f85149';
+                                    else if (sec.entropy && sec.entropy > 6.0) td3.style.color = '#d29922';
+                                    tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+                                    secBody.appendChild(tr);
+                                });
+                                secTable.appendChild(secBody);
+                                addElement(secTable);
+                            }
+
+                            // Top suspicious imports
+                            if (pe.imports && pe.imports.length) {
+                                addSection('Suspicious Imports (' + pe.imports.length + ' DLLs)');
+                                pe.imports.slice(0, 8).forEach(function(imp) {
+                                    var impRow = document.createElement('div');
+                                    impRow.style.cssText = 'margin:2px 0; font-size:0.75rem;';
+                                    var dllName = el('span', '', '');
+                                    dllName.style.cssText = 'font-weight:700; color:#d2a8ff;';
+                                    dllName.textContent = (imp.dll || imp.name || '?') + ': ';
+                                    impRow.appendChild(dllName);
+                                    impRow.appendChild(document.createTextNode((imp.functions || []).slice(0, 5).join(', ')));
+                                    container.appendChild(impRow);
+                                });
+                            }
+
+                            // Strings
+                            var strings = result.string_analysis || {};
+                            if (strings.total_strings) {
+                                addSection('Strings Analysis');
+                                addRow('Total', strings.total_strings);
+                                if (strings.suspicious_categories) {
+                                    Object.keys(strings.suspicious_categories).forEach(function(cat) {
+                                        var items = strings.suspicious_categories[cat];
+                                        if (Array.isArray(items) && items.length > 0) {
+                                            addRow(cat, items.slice(0, 5).join(', '), '#d29922');
+                                        }
+                                    });
+                                }
+                                if (strings.registry_keys && strings.registry_keys.length) addRow('Registry Keys', strings.registry_keys.slice(0, 3).join(', '), '#d29922');
+                                if (strings.interesting_strings && strings.interesting_strings.length) addRow('Interesting', strings.interesting_strings.slice(0, 5).join(', '), '#d29922');
+                            }
+
+                            // Entropy
+                            var ent = result.entropy_analysis || {};
+                            if (ent.overall_entropy) {
+                                addSection('Entropy');
+                                addRow('Overall', ent.overall_entropy.toFixed(3) + ' - ' + (ent.interpretation || ''));
+                            }
+
+                            // YARA matches
+                            var yara = result.yara_analysis || {};
+                            if (yara.matches && yara.matches.length) {
+                                addSection('YARA Matches (' + yara.matches.length + ')');
+                                yara.matches.forEach(function(m) {
+                                    var yaraRow = el('div', '');
+                                    yaraRow.style.cssText = 'display:flex; align-items:center; gap:0.4rem; margin:3px 0; padding:0.25rem 0.5rem; background:rgba(248,81,73,0.06); border-radius:4px; border-left:3px solid #f85149;';
+                                    var ruleSpan = el('span', '', '');
+                                    ruleSpan.style.cssText = 'font-weight:700; color:#f85149;';
+                                    ruleSpan.textContent = m.rule || m;
+                                    yaraRow.appendChild(ruleSpan);
+                                    if (m.description) {
+                                        yaraRow.appendChild(document.createTextNode(' - ' + m.description));
+                                    }
+                                    container.appendChild(yaraRow);
+                                });
+                            }
+
+                            // MITRE
+                            if (result.mitre_mapping && result.mitre_mapping.length) {
+                                addSection('MITRE ATT&CK');
+                                result.mitre_mapping.slice(0, 6).forEach(function(m) {
+                                    addRow(m.technique_id || m.id || '?', (m.technique_name || m.name || '') + ' - ' + (m.tactic || ''), '#d2a8ff');
+                                });
+                            }
+                        }
+
+                        // ──────── analyze_email result (ENHANCED) ────────
+                        else if (toolName === 'analyze_email') {
+                            var ed = result.email_data || {};
+
+                            // Sender/subject card
+                            addElement(buildInfoCard('Email Details', 'bi-envelope-fill', [
+                                { label: 'From', value: ed.from || 'N/A', color: '#58a6ff' },
+                                { label: 'To', value: ed.to || 'N/A' },
+                                { label: 'Subject', value: ed.subject || 'N/A', color: '#d2a8ff' },
+                                { label: 'Date', value: ed.date || 'N/A' }
+                            ]));
+
+                            // Phishing score gauge
+                            var emailScore = result.composite_score || result.base_phishing_score || 0;
+                            addSection('Phishing Score');
+                            addElement(buildScoreGauge(emailScore, 100));
+                            var emailVerdictWrap = document.createElement('div');
+                            emailVerdictWrap.style.cssText = 'margin:0.4rem 0;';
+                            emailVerdictWrap.appendChild(buildVerdictBadge(result.verdict));
+                            addElement(emailVerdictWrap);
+
+                            // SPF/DKIM/DMARC indicators
+                            var adv = result.advanced_analysis || {};
+                            if (adv.spf_result || adv.dkim_result || adv.dmarc_result) {
+                                addSection('Email Authentication');
+                                var authRow = document.createElement('div');
+                                authRow.style.cssText = 'display:flex; flex-wrap:wrap; gap:0.4rem; margin:0.3rem 0;';
+                                if (adv.spf_result) authRow.appendChild(buildAuthIndicator('SPF', adv.spf_result));
+                                if (adv.dkim_result) authRow.appendChild(buildAuthIndicator('DKIM', adv.dkim_result));
+                                if (adv.dmarc_result) authRow.appendChild(buildAuthIndicator('DMARC', adv.dmarc_result));
+                                addElement(authRow);
+                            }
+
+                            // Suspicious links
+                            var susLinks = result.suspicious_links || (result.advanced_analysis || {}).suspicious_links || [];
+                            if (susLinks.length) {
+                                addSection('Suspicious Links (' + susLinks.length + ')');
+                                susLinks.slice(0, 10).forEach(function(link) {
+                                    var linkRow = el('div', '');
+                                    linkRow.style.cssText = 'margin:2px 0; padding:0.2rem 0.4rem; background:rgba(248,81,73,0.06); border-radius:3px; font-size:0.73rem; word-break:break-all; color:#f85149;';
+                                    linkRow.innerHTML = '<i class="bi bi-link-45deg me-1"></i>';
+                                    linkRow.appendChild(document.createTextNode(typeof link === 'string' ? link : (link.url || link.value || JSON.stringify(link))));
+                                    container.appendChild(linkRow);
+                                });
+                            }
+
+                            // IOCs found
+                            var iocs = result.iocs_found || [];
+                            if (iocs.length) {
+                                addSection('IOCs Found (' + iocs.length + ')');
+                                iocs.slice(0, 10).forEach(function(i) { addRow(i.type || '?', i.value || i, '#d29922'); });
+                            }
+                        }
+
+                        // ──────── MCP tool results (ENHANCED) ────────
+                        else if (result.server && result.tool && result.result) {
+                            var mcpRes = result.result;
+
+                            // MCP server badge
+                            var mcpBadge = el('div', 'mcp-server-badge');
+                            mcpBadge.innerHTML = '<i class="bi bi-cloud-fill"></i>';
+                            mcpBadge.appendChild(document.createTextNode('MCP: ' + result.server));
+                            addElement(mcpBadge);
+
+                            var mcpToolName = (result.tool || '').toLowerCase();
+
+                            // ── WHOIS result ──
+                            if (mcpToolName.indexOf('whois') >= 0 && typeof mcpRes === 'object') {
+                                addElement(buildInfoCard('WHOIS Lookup', 'bi-globe2', [
+                                    { label: 'Organization', value: mcpRes.org_name || mcpRes.org || mcpRes.organization || '', color: '#58a6ff' },
+                                    { label: 'Country', value: mcpRes.country || '' },
+                                    { label: 'Net Range', value: mcpRes.netrange || mcpRes.net_range || '' },
+                                    { label: 'CIDR', value: mcpRes.cidr || '' },
+                                    { label: 'Registrar', value: mcpRes.registrar || '' },
+                                    { label: 'Created', value: mcpRes.creation_date || mcpRes.created || '' },
+                                    { label: 'Updated', value: mcpRes.updated_date || mcpRes.updated || '' },
+                                    { label: 'Description', value: mcpRes.description || mcpRes.desc || '' }
+                                ]));
+                            }
+                            // ── GeoIP result ──
+                            else if (mcpToolName.indexOf('geoip') >= 0 && typeof mcpRes === 'object') {
+                                // Country flag
+                                var countryCode = (mcpRes.country_code || mcpRes.countryCode || '').toUpperCase();
+                                var flagEmoji = '';
+                                if (countryCode.length === 2) {
+                                    flagEmoji = String.fromCodePoint(0x1F1E6 + countryCode.charCodeAt(0) - 65) +
+                                                String.fromCodePoint(0x1F1E6 + countryCode.charCodeAt(1) - 65) + ' ';
+                                }
+
+                                addElement(buildInfoCard(flagEmoji + 'GeoIP Lookup', 'bi-geo-alt-fill', [
+                                    { label: 'Country', value: (mcpRes.country || mcpRes.country_name || '') + (countryCode ? ' (' + countryCode + ')' : ''), color: '#58a6ff' },
+                                    { label: 'City', value: mcpRes.city || '' },
+                                    { label: 'Region', value: mcpRes.region || mcpRes.region_name || '' },
+                                    { label: 'ISP', value: mcpRes.isp || '' },
+                                    { label: 'AS Number', value: mcpRes.asn || mcpRes.as_number || mcpRes.as || '' },
+                                    { label: 'AS Org', value: mcpRes.as_org || mcpRes.org || '' },
+                                    { label: 'Latitude', value: mcpRes.latitude || mcpRes.lat || '' },
+                                    { label: 'Longitude', value: mcpRes.longitude || mcpRes.lon || '' }
+                                ]));
+
+                                // Proxy/Mobile/Hosting indicators
+                                var hasIndicators = mcpRes.proxy !== undefined || mcpRes.mobile !== undefined || mcpRes.hosting !== undefined || mcpRes.is_vpn !== undefined || mcpRes.is_tor !== undefined;
+                                if (hasIndicators) {
+                                    var geoInds = el('div', 'geo-indicators');
+                                    var indicators = [
+                                        { key: 'proxy', label: 'Proxy' },
+                                        { key: 'is_vpn', label: 'VPN' },
+                                        { key: 'is_tor', label: 'TOR' },
+                                        { key: 'mobile', label: 'Mobile' },
+                                        { key: 'hosting', label: 'Hosting' }
+                                    ];
+                                    indicators.forEach(function(ind) {
+                                        var val = mcpRes[ind.key];
+                                        if (val === undefined) return;
+                                        var pill = el('span', 'geo-pill ' + (val ? 'pill-active' : 'pill-inactive'));
+                                        pill.innerHTML = (val ? '<i class="bi bi-exclamation-circle-fill me-1"></i>' : '<i class="bi bi-check-circle me-1"></i>');
+                                        pill.appendChild(document.createTextNode(ind.label));
+                                        geoInds.appendChild(pill);
+                                    });
+                                    addElement(geoInds);
+                                }
+                            }
+                            // ── Shodan InternetDB result ──
+                            else if ((mcpToolName.indexOf('shodan') >= 0 || mcpToolName.indexOf('internetdb') >= 0) && typeof mcpRes === 'object') {
+                                // Ports as badges
+                                var ports = mcpRes.ports || [];
+                                if (ports.length) {
+                                    addSection('Open Ports (' + ports.length + ')');
+                                    var portsWrap = document.createElement('div');
+                                    portsWrap.style.cssText = 'display:flex; flex-wrap:wrap; gap:3px; margin:0.3rem 0;';
+                                    ports.forEach(function(p) {
+                                        var pb = el('span', 'port-badge', String(p));
+                                        portsWrap.appendChild(pb);
+                                    });
+                                    addElement(portsWrap);
+                                }
+
+                                // Tags
+                                var tags = mcpRes.tags || [];
+                                if (tags.length) {
+                                    addSection('Tags');
+                                    var tagsWrap = document.createElement('div');
+                                    tagsWrap.style.cssText = 'display:flex; flex-wrap:wrap; gap:3px; margin:0.3rem 0;';
+                                    tags.forEach(function(t) {
+                                        var tb = el('span', 'tag-badge-sm', String(t));
+                                        tagsWrap.appendChild(tb);
+                                    });
+                                    addElement(tagsWrap);
+                                }
+
+                                // Vulns
+                                var vulns = mcpRes.vulns || [];
+                                if (vulns.length) {
+                                    addSection('Vulnerabilities (' + vulns.length + ')');
+                                    var vulnsWrap = document.createElement('div');
+                                    vulnsWrap.style.cssText = 'display:flex; flex-wrap:wrap; gap:3px; margin:0.3rem 0;';
+                                    vulns.forEach(function(v) {
+                                        var vb = el('span', 'vuln-badge', String(v));
+                                        vulnsWrap.appendChild(vb);
+                                    });
+                                    addElement(vulnsWrap);
+                                }
+
+                                // CPEs
+                                var cpes = mcpRes.cpes || [];
+                                if (cpes.length) {
+                                    addSection('CPEs (' + cpes.length + ')');
+                                    cpes.slice(0, 10).forEach(function(c) { addRow('CPE', c); });
+                                }
+
+                                // Hostnames
+                                var hostnames = mcpRes.hostnames || [];
+                                if (hostnames.length) {
+                                    addRow('Hostnames', hostnames.join(', '));
+                                }
+                            }
+                            // ── Generic MCP fallback ──
+                            else if (typeof mcpRes === 'object') {
+                                addElement(buildInfoCard('Result Data', 'bi-braces', Object.keys(mcpRes).slice(0, 15).filter(function(k) {
+                                    return mcpRes[k] !== null && mcpRes[k] !== undefined;
+                                }).map(function(k) {
+                                    var v = mcpRes[k];
+                                    var displayVal;
+                                    if (Array.isArray(v)) {
+                                        displayVal = v.length <= 5 ? v.join(', ') : v.slice(0, 5).join(', ') + '... (+' + (v.length - 5) + ')';
+                                    } else if (typeof v === 'object') {
+                                        displayVal = JSON.stringify(v).substring(0, 120);
+                                    } else {
+                                        displayVal = String(v).substring(0, 200);
+                                    }
+                                    return { label: k, value: displayVal };
+                                })));
+                            }
+                        }
+                        // ──────── Generic fallback ────────
+                        else if (result.error) {
+                            addRow('Error', result.error, '#f85149');
+                        } else {
+                            // Show generic key-value for unknown tools
+                            var genericKeys = Object.keys(result).slice(0, 12);
+                            if (genericKeys.length) {
+                                genericKeys.forEach(function(k) {
+                                    var v = result[k];
+                                    if (v === null || v === undefined) return;
+                                    if (typeof v === 'object') {
+                                        addRow(k, JSON.stringify(v).substring(0, 150));
+                                    } else {
+                                        addRow(k, String(v).substring(0, 200));
+                                    }
+                                });
+                            }
+                        }
+
+                        return container.childNodes.length > 0 ? container : null;
+                    }
+
+                    function renderStepItem(step, idx) {
+                        var item = el('div', 'timeline-item');
+                        var stepType = (step.step_type || 'unknown');
+                        var isToolCall = stepType === 'tool_call';
+                        var isFinalAnswer = stepType === 'final_answer';
+                        var isThinking = stepType === 'thinking' || stepType === 'thought';
+                        var toolName = step.tool || step.tool_name || null;
+                        var isMcp = toolName && toolName.indexOf('.') > 0;
+
+                        // Dot color: thinking=gray, local tool=green, MCP tool=blue, final=accent
+                        var dotColor = isFinalAnswer ? '#58a6ff' : isToolCall ? (isMcp ? '#58a6ff' : '#3fb950') : '#6b7280';
+                        var dot = document.createElement('span');
+                        dot.className = 'timeline-dot';
+                        dot.style.background = dotColor;
+                        item.appendChild(dot);
+
+                        // Header row
+                        var headerDiv = document.createElement('div');
+                        headerDiv.style.cssText = 'display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; cursor:pointer;';
+
+                        // Step number badge
+                        var numBadge = el('span', 'step-num-badge', String(idx + 1));
+                        headerDiv.appendChild(numBadge);
+
+                        // Phase flow: THINK -> ACT -> OBSERVE
+                        var phaseFlow = el('span', 'phase-flow');
+                        var thinkPhase = el('span', 'phase phase-think ' + (isThinking ? 'phase-active' : 'phase-dim'), 'THINK');
+                        var arrow1 = el('span', 'phase-arrow', '\u25B6');
+                        var actPhase = el('span', 'phase phase-act ' + (isToolCall ? 'phase-active' : 'phase-dim'), 'ACT');
+                        var arrow2 = el('span', 'phase-arrow', '\u25B6');
+                        var obsPhase = el('span', 'phase phase-observe ' + (isFinalAnswer ? 'phase-active' : 'phase-dim'), 'OBSERVE');
+                        phaseFlow.appendChild(thinkPhase);
+                        phaseFlow.appendChild(arrow1);
+                        phaseFlow.appendChild(actPhase);
+                        phaseFlow.appendChild(arrow2);
+                        phaseFlow.appendChild(obsPhase);
+                        headerDiv.appendChild(phaseFlow);
+
+                        // Type badge with color coding
+                        var typeBadge = document.createElement('span');
+                        if (isToolCall) {
+                            typeBadge.className = isMcp ? 'badge' : 'badge bg-success-subtle text-success';
+                            if (isMcp) typeBadge.style.cssText = 'font-size:0.65rem; background:rgba(88,166,255,0.15); color:#58a6ff;';
+                            else typeBadge.style.fontSize = '0.65rem';
+                        } else if (isThinking) {
+                            typeBadge.className = 'badge';
+                            typeBadge.style.cssText = 'font-size:0.65rem; background:rgba(139,148,158,0.15); color:#8b949e;';
+                        } else if (isFinalAnswer) {
+                            typeBadge.className = 'badge';
+                            typeBadge.style.cssText = 'font-size:0.65rem; background:rgba(88,166,255,0.15); color:#58a6ff;';
+                        } else {
+                            typeBadge.className = 'badge bg-secondary';
+                            typeBadge.style.fontSize = '0.65rem';
+                        }
+                        typeBadge.textContent = stepType;
+                        headerDiv.appendChild(typeBadge);
+
+                        // Tool name
+                        if (toolName) {
+                            var toolBadge = document.createElement('span');
+                            toolBadge.style.cssText = 'font-size:0.75rem; color:#d2a8ff; font-weight:600;';
+                            toolBadge.innerHTML = '<i class="bi bi-wrench me-1"></i>' + toolName;
+                            headerDiv.appendChild(toolBadge);
+
+                            // Source badge
+                            if (isMcp) {
+                                var serverName = toolName.split('.')[0];
+                                var srcBadge = el('span', 'mcp-server-badge');
+                                srcBadge.innerHTML = '<i class="bi bi-cloud-fill"></i>';
+                                srcBadge.appendChild(document.createTextNode(serverName));
+                                srcBadge.style.margin = '0';
+                                headerDiv.appendChild(srcBadge);
+                            } else {
+                                var srcBadge = document.createElement('span');
+                                srcBadge.style.cssText = 'font-size:0.65rem; padding:1px 6px; border-radius:3px; background:rgba(63,185,80,0.15); color:#3fb950;';
+                                srcBadge.textContent = 'local';
+                                headerDiv.appendChild(srcBadge);
+                            }
+                        }
+
+                        // Duration prominently displayed
+                        if (step.duration_ms) {
+                            var durSpan = document.createElement('span');
+                            var durSec = step.duration_ms / 1000;
+                            durSpan.style.cssText = 'font-size:0.7rem; padding:1px 6px; border-radius:3px; font-weight:600; margin-left:auto; ' +
+                                (durSec > 10 ? 'background:rgba(248,81,73,0.12); color:#f85149;' :
+                                 durSec > 3 ? 'background:rgba(210,153,34,0.12); color:#d29922;' :
+                                 'background:rgba(63,185,80,0.12); color:#3fb950;');
+                            durSpan.innerHTML = '<i class="bi bi-clock me-1"></i>' + durSec.toFixed(1) + 's';
+                            headerDiv.appendChild(durSpan);
+                        }
+
+                        // Expand/collapse toggle
+                        var toggleBtn = el('button', 'step-detail-toggle');
+                        toggleBtn.innerHTML = '<i class="bi bi-chevron-down"></i>';
+                        toggleBtn.title = 'Toggle details';
+                        headerDiv.appendChild(toggleBtn);
+
+                        item.appendChild(headerDiv);
+
+                        // Collapsible detail area
+                        var detailArea = el('div', 'step-collapsible expanded');
+                        var detailId = 'step-detail-' + idx;
+                        detailArea.id = detailId;
+
+                        // Thinking content
+                        if (step.content && (isThinking || isFinalAnswer)) {
+                            var contentPre = document.createElement('pre');
+                            contentPre.style.cssText = 'background:rgba(0,0,0,0.2); padding:0.5rem; border-radius:4px; font-size:0.75rem; white-space:pre-wrap; max-height:150px; overflow-y:auto; margin-top:0.4rem; color:var(--text-secondary, #aaa); line-height:1.4;';
+                            contentPre.textContent = step.content.substring(0, 1000);
+                            if (step.content.length > 1000) contentPre.textContent += '\n... (truncated)';
+                            detailArea.appendChild(contentPre);
+                        }
+
+                        // Tool params
+                        if (step.tool_params && isToolCall) {
+                            var params;
+                            try { params = typeof step.tool_params === 'string' ? JSON.parse(step.tool_params) : step.tool_params; } catch(e) { params = step.tool_params; }
+                            if (params && typeof params === 'object' && Object.keys(params).length) {
+                                var paramsDiv = document.createElement('div');
+                                paramsDiv.style.cssText = 'margin-top:0.4rem; font-size:0.72rem;';
+                                var paramsLabel = el('span', '', 'Params: ');
+                                paramsLabel.style.cssText = 'color:#8b949e; font-weight:600;';
+                                paramsDiv.appendChild(paramsLabel);
+                                Object.keys(params).slice(0, 6).forEach(function(k) {
+                                    var pv = params[k];
+                                    var paramChip = document.createElement('span');
+                                    paramChip.style.cssText = 'display:inline-block; margin:1px 2px; padding:1px 6px; border-radius:3px; background:rgba(255,255,255,0.05); font-size:0.7rem;';
+                                    paramChip.innerHTML = '<span style="color:#8b949e;">' + k + '=</span><span style="color:#e6edf3;">' +
+                                        String(typeof pv === 'object' ? JSON.stringify(pv) : pv).substring(0, 60) + '</span>';
+                                    paramsDiv.appendChild(paramChip);
+                                });
+                                detailArea.appendChild(paramsDiv);
+                            }
+                        }
+
+                        // Render rich tool result if tool_call
+                        if (isToolCall && step.tool_result && toolName) {
+                            var richResult = renderToolResult(toolName, step.tool_result);
+                            if (richResult) detailArea.appendChild(richResult);
+                        }
+
+                        item.appendChild(detailArea);
+
+                        // Toggle collapse behavior
+                        toggleBtn.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            var area = document.getElementById(detailId);
+                            if (area.classList.contains('expanded')) {
+                                area.classList.remove('expanded');
+                                toggleBtn.innerHTML = '<i class="bi bi-chevron-right"></i>';
+                            } else {
+                                area.classList.add('expanded');
+                                toggleBtn.innerHTML = '<i class="bi bi-chevron-down"></i>';
+                            }
+                        });
+
+                        // Click header to toggle too
+                        headerDiv.addEventListener('click', function() {
+                            var area = document.getElementById(detailId);
+                            if (area.classList.contains('expanded')) {
+                                area.classList.remove('expanded');
+                                toggleBtn.innerHTML = '<i class="bi bi-chevron-right"></i>';
+                            } else {
+                                area.classList.add('expanded');
+                                toggleBtn.innerHTML = '<i class="bi bi-chevron-down"></i>';
+                            }
+                        });
+
+                        return item;
+                    }
+
+                    function loadMoreSteps() {
+                        var end = Math.min(_stepsShown + PAGE_SIZE, steps.length);
+                        for (var i = _stepsShown; i < end; i++) {
+                            timeline.appendChild(renderStepItem(steps[i], i));
+                        }
+                        _stepsShown = end;
+                        var existingBtn = document.getElementById('showMoreStepsBtn');
+                        if (existingBtn) existingBtn.remove();
+                        if (_stepsShown < steps.length) {
+                            var moreBtn = el('button', 'btn btn-sm btn-outline-secondary w-100 mt-2');
+                            moreBtn.id = 'showMoreStepsBtn';
+                            moreBtn.appendChild(icon('bi bi-chevron-down me-1'));
+                            moreBtn.appendChild(document.createTextNode('Show more (' + (_stepsShown) + ' / ' + steps.length + ')'));
+                            moreBtn.addEventListener('click', function() { loadMoreSteps(); });
+                            timeline.parentNode.insertBefore(moreBtn, timeline.nextSibling);
+                        }
+                    }
+
+                    tabSteps.appendChild(timeline);
+                    loadMoreSteps();
+                } else {
+                    tabSteps.appendChild(el('p', 'text-muted', 'No steps recorded for this investigation.'));
+                }
+
+                tabContainer.appendChild(tabSteps);
+
+                // ════════ TAB: Findings ════════
+                var tabFindings = el('div', 'detail-tab-content');
+                tabFindings.id = 'tab-findings';
+
+                if (findings.length) {
+                    findings.forEach(function(finding, fidx) {
+                        var fItem = el('div', 'finding-item');
+
+                        // Finding icon based on severity/type
+                        var fText = '';
+                        var fTool = '';
+                        var fSeverity = 'info';
+                        if (typeof finding === 'string') {
+                            fText = finding;
+                        } else if (typeof finding === 'object') {
+                            fText = finding.text || finding.description || finding.message || finding.finding || JSON.stringify(finding);
+                            fTool = finding.tool || finding.source || finding.tool_name || '';
+                            var sev = (finding.severity || finding.level || finding.type || '').toLowerCase();
+                            if (sev.indexOf('critical') >= 0 || sev.indexOf('high') >= 0 || sev.indexOf('danger') >= 0 || sev.indexOf('malicious') >= 0) fSeverity = 'danger';
+                            else if (sev.indexOf('medium') >= 0 || sev.indexOf('warn') >= 0 || sev.indexOf('suspicious') >= 0) fSeverity = 'warning';
+                            else if (sev.indexOf('success') >= 0 || sev.indexOf('clean') >= 0 || sev.indexOf('low') >= 0) fSeverity = 'success';
+                        }
+
+                        var fIcon = el('div', 'finding-icon icon-' + fSeverity);
+                        var iconCls = fSeverity === 'danger' ? 'bi-exclamation-triangle-fill' :
+                            fSeverity === 'warning' ? 'bi-exclamation-circle-fill' :
+                            fSeverity === 'success' ? 'bi-check-circle-fill' : 'bi-info-circle-fill';
+                        fIcon.appendChild(icon('bi ' + iconCls));
+                        fItem.appendChild(fIcon);
+
+                        var fContent = el('div', 'finding-content');
+                        fContent.appendChild(el('div', 'finding-text', fText));
+
+                        // Meta line with tool badge
+                        var fMeta = el('div', 'finding-meta');
+                        fMeta.appendChild(el('span', '', '#' + (fidx + 1)));
+                        if (fTool) {
+                            var fToolBadge = el('span', 'finding-tool-badge');
+                            fToolBadge.appendChild(icon('bi bi-wrench me-1'));
+                            fToolBadge.appendChild(document.createTextNode(fTool));
+                            fMeta.appendChild(fToolBadge);
+                        }
+                        if (typeof finding === 'object' && finding.severity) {
+                            var sevBadge = el('span', 'verdict-badge verdict-' + (fSeverity === 'danger' ? 'malicious' : fSeverity === 'warning' ? 'suspicious' : 'clean'));
+                            sevBadge.style.cssText = 'font-size:0.6rem; padding:0.1rem 0.4rem;';
+                            sevBadge.textContent = finding.severity;
+                            fMeta.appendChild(sevBadge);
+                        }
+                        fContent.appendChild(fMeta);
+                        fItem.appendChild(fContent);
+
+                        tabFindings.appendChild(fItem);
+                    });
+                } else {
+                    tabFindings.appendChild(el('p', 'text-muted', 'No findings accumulated for this investigation.'));
+                }
+
+                tabContainer.appendChild(tabFindings);
+                detailBody.appendChild(tabContainer);
+
+                // Footer buttons
+                while (detailFooter.firstChild) detailFooter.removeChild(detailFooter.firstChild);
+
+                var exportBtn = el('button', 'btn btn-sm btn-outline-secondary');
+                exportBtn.appendChild(icon('bi bi-download me-1'));
+                exportBtn.appendChild(document.createTextNode('Export as JSON'));
+                exportBtn.addEventListener('click', function() {
+                    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'investigation_' + sid.substring(0, 12) + '.json';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                });
+                detailFooter.appendChild(exportBtn);
+
+                var continueBtn = document.createElement('a');
+                continueBtn.href = '/agent/chat?session=' + encodeURIComponent(sid);
+                continueBtn.className = 'btn btn-sm btn-accent';
+                continueBtn.appendChild(icon('bi bi-chat-dots me-1'));
+                continueBtn.appendChild(document.createTextNode('Continue in Agent Chat'));
+                detailFooter.appendChild(continueBtn);
+            })
+            .catch(function() {
+                detailBody.textContent = 'Failed to load session detail.';
+            });
+    }
+
+    function updateStats(sessions) {
+        var total = sessions.length;
+        var active = 0, completed = 0, failed = 0;
+        sessions.forEach(function(s) {
+            var st = (s.status || '').toLowerCase();
+            if (st === 'active' || st === 'running') active++;
+            else if (st === 'completed' || st === 'complete') completed++;
+            else if (st === 'failed' || st === 'error') failed++;
+        });
+        document.getElementById('statTotal').textContent = total;
+        var activeEl = document.getElementById('statActive');
+        activeEl.textContent = active;
+        if (active > 0) {
+            activeEl.classList.add('pulse-active');
+        } else {
+            activeEl.classList.remove('pulse-active');
+        }
+        document.getElementById('statCompleted').textContent = completed;
+        document.getElementById('statFailed').textContent = failed;
+    }
+
+    function startNew() {
+        var goal = document.getElementById('investigationGoal').value.trim();
+        if (!goal) return;
+        var maxSteps = parseInt(document.getElementById('investigationMaxSteps').value) || 50;
+        var priority = document.getElementById('investigationPriority').value;
+        var btn = document.getElementById('startInvestigationBtn');
+        btn.disabled = true;
+        btn.textContent = 'Starting...';
+
+        var payload = { goal: goal, max_steps: maxSteps, priority: priority };
+        if (_tags.length) payload.tags = _tags.slice();
+
+        fetch('/api/agent/investigate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.disabled = false;
+            while (btn.firstChild) btn.removeChild(btn.firstChild);
+            btn.appendChild(icon('bi bi-play-fill me-1'));
+            btn.appendChild(document.createTextNode('Start Investigation'));
+            var modalEl = document.getElementById('newInvestigationModal');
+            var modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) modal.hide();
+            document.getElementById('investigationGoal').value = '';
+            _tags = [];
+            renderTags();
+            loadSessions();
+            if (data.session_id || data.id) {
+                window.location.href = '/agent/chat?session=' + encodeURIComponent(data.session_id || data.id);
+            }
+        })
+        .catch(function(err) {
+            btn.disabled = false;
+            while (btn.firstChild) btn.removeChild(btn.firstChild);
+            btn.appendChild(icon('bi bi-play-fill me-1'));
+            btn.appendChild(document.createTextNode('Start Investigation'));
+            alert('Failed to start investigation: ' + err.message);
+        });
+    }
+
+    // ── Tags management ──
+    function handleTagKey(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            var input = document.getElementById('tagInput');
+            var val = input.value.trim().toLowerCase();
+            if (val && _tags.indexOf(val) === -1) {
+                _tags.push(val);
+                renderTags();
+            }
+            input.value = '';
+        }
+    }
+
+    function removeTag(idx) {
+        _tags.splice(idx, 1);
+        renderTags();
+    }
+
+    function renderTags() {
+        var container = document.getElementById('tagsContainer');
+        var existing = container.querySelectorAll('.tag-chip');
+        existing.forEach(function(tagEl) { tagEl.remove(); });
+        var input = document.getElementById('tagInput');
+        _tags.forEach(function(tag, idx) {
+            var chip = el('span', 'tag-chip', tag);
+            var rm = icon('bi bi-x tag-remove');
+            rm.addEventListener('click', function(e) { e.stopPropagation(); removeTag(idx); });
+            chip.appendChild(rm);
+            container.insertBefore(chip, input);
+        });
+    }
+
+    // ── Playbook loading ──
+    function loadPlaybooks() {
+        fetch('/api/playbooks')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var select = document.getElementById('playbookSelect');
+                var playbooks = data.playbooks || data || [];
+                playbooks.forEach(function(pb) {
+                    var opt = document.createElement('option');
+                    opt.value = pb.id || pb.name || '';
+                    opt.textContent = pb.name || pb.title || pb.id || 'Unnamed';
+                    if (pb.description) opt.title = pb.description;
+                    select.appendChild(opt);
+                });
+            })
+            .catch(function() {
+                // Silently fail - playbooks are optional
+            });
+    }
+
+    function applyPlaybook(selectEl) {
+        if (!selectEl.value) return;
+        var opt = selectEl.options[selectEl.selectedIndex];
+        var goalField = document.getElementById('investigationGoal');
+        if (opt.title && !goalField.value.trim()) {
+            goalField.value = opt.title;
+        }
+    }
+
+    // ── Init ──
+    document.addEventListener('DOMContentLoaded', function() {
+        loadSessions();
+        loadPlaybooks();
+
+        // Clean up stale backdrops when any modal hides
+        document.querySelectorAll('.modal').forEach(function(m) {
+            m.addEventListener('hidden.bs.modal', function() {
+                document.querySelectorAll('.modal-backdrop').forEach(function(b) { b.remove(); });
+                document.body.classList.remove('modal-open');
+                document.body.style.removeProperty('overflow');
+                document.body.style.removeProperty('padding-right');
+            });
+        });
+    });
+
+    return {
+        loadSessions: loadSessions,
+        startNew: startNew,
+        filterByGoal: filterByGoal,
+        setView: setView,
+        toggleSelectAll: toggleSelectAll,
+        deleteSelected: deleteSelected,
+        confirmDelete: confirmDelete,
+        handleTagKey: handleTagKey,
+        applyPlaybook: applyPlaybook
+    };
+})();
+</script>
+{% endblock %}

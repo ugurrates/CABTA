@@ -1,0 +1,295 @@
+name: Email Investigation
+description: >
+  Derinlemesine email sorusturmasi - header analizi, gonderen dogrulama,
+  URL ve ek dosya analizi, tehdit istihbarati kontrolu, verdict belirleme.
+  Phishing playbook'undan daha kapsamli - tum email tehditleri icin.
+trigger_type: manual
+input_params:
+  - name: eml_path
+    description: Email dosyasi yolu (.eml/.msg) / Path to email file
+    required: true
+  - name: reported_by
+    description: Raporlayan kisi / Who reported the email
+    required: false
+  - name: investigation_type
+    description: >
+      Sorusturma tipi: phishing, bec, spam, malware_delivery, spear_phishing
+    required: false
+
+steps:
+  # ===== Phase 1: Email Parsing =====
+  - name: parse_email
+    tool: analyze_email
+    params:
+      file_path: "{{eml_path}}"
+    description: Email header, body ve ek dosya analizi
+
+  - name: extract_email_iocs
+    tool: extract_iocs
+    params:
+      text: "{{parse_email.body}}"
+    description: Email body'den tum IOC'lari cikar (URL, IP, domain, hash, email)
+
+  # ===== Phase 2: Gonderen Dogrulama =====
+  - name: sender_whois
+    tool: mcp:osint-tools/whois_lookup
+    params:
+      target: "{{parse_email.sender_domain}}"
+    description: Gonderen domain WHOIS - kayit tarihi, sahiplik (yeni domain = supheli)
+
+  - name: sender_email_security
+    tool: mcp:osint-tools/email_security_check
+    params:
+      domain: "{{parse_email.sender_domain}}"
+    description: SPF, DKIM, DMARC kontrolu - email spoofing tespiti
+
+  - name: sender_dns
+    tool: mcp:osint-tools/dns_resolve
+    params:
+      domain: "{{parse_email.sender_domain}}"
+    description: Gonderen domain DNS kayitlari - MX, A, TXT
+
+  - name: sender_ssl
+    tool: mcp:osint-tools/ssl_certificate_info
+    params:
+      host: "{{parse_email.sender_domain}}"
+    description: Gonderen domain SSL sertifika bilgisi
+
+  - name: sender_subdomains
+    tool: mcp:osint-tools/subdomain_enumerate
+    params:
+      domain: "{{parse_email.sender_domain}}"
+    description: Gonderen domain subdomain enumeration - iliskili domainler
+
+  - name: sender_ip_check
+    tool: mcp:threat-intel-free/blocklist_check
+    params:
+      ip: "{{parse_email.sender_ip}}"
+    condition:
+      if: "{{parse_email.sender_ip}}"
+    description: Gonderen IP blocklist kontrolu
+
+  - name: sender_ip_geo
+    tool: mcp:osint-tools/geoip_lookup
+    params:
+      ip: "{{parse_email.sender_ip}}"
+    condition:
+      if: "{{parse_email.sender_ip}}"
+    description: Gonderen IP GeoIP bilgisi
+
+  - name: sender_feodo
+    tool: mcp:threat-intel-free/feodo_tracker_check
+    params:
+      ip: "{{parse_email.sender_ip}}"
+    condition:
+      if: "{{parse_email.sender_ip}}"
+    description: Gonderen IP Feodo Tracker C2 kontrolu
+
+  - name: sender_tor
+    tool: mcp:threat-intel-free/tor_exit_node_check
+    params:
+      ip: "{{parse_email.sender_ip}}"
+    condition:
+      if: "{{parse_email.sender_ip}}"
+    description: Gonderen IP Tor exit node kontrolu
+
+  # ===== Phase 2b: ArgusWatch Zenginlestirme =====
+  - name: sender_hudsonrock
+    tool: mcp:arguswatch/hudsonrock_check
+    params:
+      domain: "{{parse_email.sender_domain}}"
+    description: HudsonRock info-stealer kurban kontrolu - gonderen domain calisanlari ele gecirilmis mi?
+
+  - name: sender_typosquat
+    tool: mcp:arguswatch/typosquat_detect
+    params:
+      domain: "{{parse_email.sender_domain}}"
+    description: Typosquat tespiti - gonderen domain meşru domain'in sahte kopyası mı?
+
+  # ===== Phase 3: URL Analizi =====
+  - name: url_openphish
+    tool: mcp:arguswatch/openphish_lookup
+    for_each: "extract_email_iocs.urls"
+    params:
+      url: "{{item}}"
+    description: OpenPhish phishing URL feed kontrolu
+
+  - name: url_urlhaus
+    tool: mcp:threat-intel-free/urlhaus_lookup
+    for_each: "extract_email_iocs.urls"
+    params:
+      indicator: "{{item}}"
+    description: URL'leri URLhaus'ta kontrol et
+
+  - name: url_malwoverview
+    tool: mcp:malwoverview/malwoverview_url_check
+    for_each: "extract_email_iocs.urls"
+    params:
+      url: "{{item}}"
+    description: Malwoverview ile URL tehdit kontrolu
+
+  - name: url_headers
+    tool: mcp:osint-tools/http_headers
+    for_each: "extract_email_iocs.urls"
+    params:
+      url: "{{item}}"
+    description: URL HTTP header analizi - redirect, server bilgisi
+
+  - name: url_domain_ssl
+    tool: mcp:osint-tools/ssl_certificate_info
+    for_each: "extract_email_iocs.domains"
+    params:
+      host: "{{item}}"
+    description: URL domain SSL sertifika kontrolu
+
+  - name: url_domain_whois
+    tool: mcp:osint-tools/whois_lookup
+    for_each: "extract_email_iocs.domains"
+    params:
+      target: "{{item}}"
+    description: URL domain WHOIS - yeni kayitli domain kontrolu
+
+  - name: url_domain_dns
+    tool: mcp:osint-tools/dns_resolve
+    for_each: "extract_email_iocs.domains"
+    params:
+      domain: "{{item}}"
+    description: URL domain DNS cozumlemesi
+
+  # ===== Phase 4: IP Analizi =====
+  - name: ip_reputation
+    tool: mcp:threat-intel-free/blocklist_check
+    for_each: "extract_email_iocs.ips"
+    params:
+      ip: "{{item}}"
+    condition:
+      if: "{{extract_email_iocs.ips}}"
+    description: Body'deki IP'lerin blocklist kontrolu
+
+  - name: ip_threatfox
+    tool: mcp:threat-intel-free/threatfox_ioc_lookup
+    for_each: "extract_email_iocs.ips"
+    params:
+      indicator: "{{item}}"
+    condition:
+      if: "{{extract_email_iocs.ips}}"
+    description: Body'deki IP'lerin ThreatFox kontrolu
+
+  - name: ip_geoip
+    tool: mcp:osint-tools/geoip_lookup
+    for_each: "extract_email_iocs.ips"
+    params:
+      ip: "{{item}}"
+    condition:
+      if: "{{extract_email_iocs.ips}}"
+    description: Body'deki IP'lerin GeoIP bilgisi
+
+  # ===== Phase 5: Ek Dosya Analizi =====
+  - name: attachment_metadata
+    tool: mcp:forensics-tools/file_metadata
+    for_each: "parse_email.attachments"
+    params:
+      file_path: "{{item.path}}"
+    description: Ek dosya metadata ve hash analizi
+
+  - name: attachment_hash_check
+    tool: mcp:threat-intel-free/malwarebazaar_hash_lookup
+    for_each: "parse_email.attachments"
+    params:
+      hash_value: "{{item.sha256}}"
+    description: Ek dosya hash'lerini MalwareBazaar'da kontrol et
+
+  - name: attachment_malwoverview
+    tool: mcp:malwoverview/malwoverview_triage
+    for_each: "parse_email.attachments"
+    params:
+      file_path: "{{item.path}}"
+    description: Malwoverview ile ek dosya triyaji
+
+  - name: attachment_macro_check
+    tool: mcp:remnux/olevba_analyze
+    for_each: "parse_email.attachments"
+    params:
+      file_path: "{{item.path}}"
+    condition:
+      if: "{{item.type}} in ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'docm', 'xlsm', 'pptm']"
+    description: Office dosyalarinda macro/VBA analizi
+
+  - name: attachment_ole_objects
+    tool: mcp:remnux/oleobj_extract
+    for_each: "parse_email.attachments"
+    params:
+      file_path: "{{item.path}}"
+    condition:
+      if: "{{item.type}} in ['doc', 'docx', 'xls', 'xlsx', 'rtf', 'docm', 'xlsm']"
+    description: OLE nesne cikarma - gomulu dosyalar
+
+  - name: attachment_pe_check
+    tool: mcp:remnux/pe_analyze
+    for_each: "parse_email.attachments"
+    params:
+      file_path: "{{item.path}}"
+    condition:
+      if: "{{item.type}} in ['exe', 'dll', 'scr', 'com', 'pif']"
+    description: PE dosya yapisal analizi
+
+  - name: attachment_entropy
+    tool: mcp:remnux/file_entropy
+    for_each: "parse_email.attachments"
+    params:
+      file_path: "{{item.path}}"
+    description: Ek dosya entropi analizi - paketleme/sifreleme tespiti
+
+  - name: attachment_strings
+    tool: mcp:forensics-tools/string_analysis
+    for_each: "parse_email.attachments"
+    params:
+      file_path: "{{item.path}}"
+    description: Ek dosyalarda string analizi - supheli string tespiti
+
+  # ===== Phase 6: Kapsamli Threat Intel =====
+  - name: threatfox_all
+    tool: mcp:threat-intel-free/threatfox_ioc_lookup
+    for_each: "extract_email_iocs.all_iocs"
+    params:
+      indicator: "{{item}}"
+    description: Tum IOC'lari ThreatFox'ta kontrol et
+
+  # ===== Phase 7: Verdict =====
+  - name: evaluate_email_threat
+    condition:
+      if: >
+        {{sender_email_security.score}} < '2/3' or
+        {{url_urlhaus.malicious}} or
+        {{attachment_hash_check.malicious}} or
+        {{attachment_macro_check.suspicious}} or
+        {{sender_ip_check.blocklisted}} or
+        {{sender_feodo.found}}
+      then: confirm_malicious_email
+      else: document_clean_email
+
+  - name: confirm_malicious_email
+    tool: generate_rules
+    params:
+      analysis_result: "{{parse_email}}"
+      iocs: "{{extract_email_iocs}}"
+      threat_intel: "{{threatfox_all}}"
+    description: >
+      ZARARLI EMAIL ONAYLANDI - engelleme kurallari uret:
+      - Gonderen domain/IP engelleme
+      - URL engelleme
+      - Hash engelleme
+      - YARA kurali
+      - Email filtre kurali
+
+  - name: document_clean_email
+    action: final_answer
+    description: >
+      Email sorusturma raporu:
+      - Gonderen dogrulama sonuclari (WHOIS, SPF/DKIM/DMARC, DNS, SSL)
+      - URL analiz sonuclari (URLhaus, HTTP headers, SSL)
+      - Ek dosya analiz sonuclari (hash, macro, entropi, strings)
+      - IP reputation bilgileri
+      - Threat intel sonuclari (ThreatFox, MalwareBazaar, Feodo)
+      - Verdict: Temiz / Supheli / Zararli
+      - Onerilen aksiyonlar

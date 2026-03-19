@@ -1,0 +1,37 @@
+# Blue Team Assistant Configuration
+# Copy this file to config.yaml and add your API keys
+
+# API Keys (Optional - tool works without them but with limited features)
+api_keys:
+  virustotal: ""          # https://www.virustotal.com/gui/my-apikey
+  abuseipdb: ""           # https://www.abuseipdb.com/account/api
+  shodan: ""              # https://account.shodan.io/
+  alienvault: ""          # https://otx.alienvault.com/api
+  hybrid_analysis: ""     # https://www.hybrid-analysis.com/my-account?tab=api-key
+  greynoise: ""           # https://viz.greynoise.io/account/api-key
+  urlscan: ""             # https://urlscan.io/user/profile/
+
+# LLM Configuration (Optional - for AI-powered analysis)
+llm:
+  provider: "ollama"      # Options: ollama, openai, anthropic
+  model: "llama3.1:8b"    # Model name
+  api_key: ""             # Required for openai/anthropic
+  base_url: "http://localhost:11434"  # Ollama default
+
+# Analysis Settings
+analysis:
+  max_file_size_mb: 100   # Maximum file size for analysis
+  timeout_seconds: 300    # Analysis timeout
+  enable_sandbox: true    # Enable sandbox integration
+  enable_yara: true       # Enable YARA scanning
+
+# Output Settings
+output:
+  default_format: "cli"   # Options: cli, json, html
+  save_reports: true      # Auto-save HTML reports
+  report_dir: "./reports" # Report output directory
+
+# Logging
+logging:
+  level: "INFO"           # Options: DEBUG, INFO, WARNING, ERROR
+  file: ""                # Log file path (empty = console only)

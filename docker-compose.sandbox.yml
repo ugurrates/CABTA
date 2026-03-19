@@ -1,0 +1,39 @@
+version: '3.8'
+services:
+  remnux-sandbox:
+    image: remnux/remnux-distro:focal
+    container_name: bta-remnux-sandbox
+    network_mode: "none"
+    volumes:
+      - ./sandbox/samples:/samples:ro
+      - ./sandbox/output:/output
+    mem_limit: 2g
+    cpus: 2
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  flare-sandbox:
+    image: mandiant/flare-vm:latest
+    container_name: bta-flare-sandbox
+    network_mode: "none"
+    volumes:
+      - ./sandbox/samples:/samples:ro
+      - ./sandbox/output:/output
+    mem_limit: 4g
+    cpus: 4
+    security_opt:
+      - no-new-privileges:true
+
+  mobsf:
+    image: opensecurity/mobile-security-framework-mobsf:latest
+    container_name: bta-mobsf
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./sandbox/mobile:/root/.MobSF
+    mem_limit: 2g

@@ -1,0 +1,162 @@
+name: Phishing Investigation
+description: >
+  Email phishing sorusturmasi - header analizi, URL kontrolu,
+  ek dosya analizi, gonderen dogrulama, verdict belirleme.
+trigger_type: manual
+input_params:
+  - name: email_path
+    description: Path to the email file (.eml/.msg)
+    required: true
+  - name: reported_by
+    description: Who reported the phishing email
+    required: false
+
+steps:
+  # ===== Email Analizi =====
+  - name: parse_email
+    tool: analyze_email
+    params:
+      file_path: "{{email_path}}"
+    description: Email header, body, attachment analizi
+
+  - name: extract_iocs
+    tool: extract_iocs
+    params:
+      text: "{{parse_email.body}}"
+    description: Email body'den IOC cikar (URL, IP, domain, hash)
+
+  # ===== Gonderen Dogrulama =====
+  - name: sender_domain_check
+    tool: mcp:osint-tools/whois_lookup
+    params:
+      target: "{{parse_email.sender_domain}}"
+    description: Gonderen domain WHOIS bilgisi - ne zaman kayit edilmis?
+
+  - name: sender_email_security
+    tool: mcp:osint-tools/email_security_check
+    params:
+      domain: "{{parse_email.sender_domain}}"
+    description: SPF, DKIM, DMARC kontrolu - email spoofing tespiti
+
+  - name: sender_dns
+    tool: mcp:osint-tools/dns_resolve
+    params:
+      domain: "{{parse_email.sender_domain}}"
+    description: Gonderen domain DNS kayitlari
+
+  # ===== ArgusWatch Zenginlestirme =====
+  - name: sender_typosquat
+    tool: mcp:arguswatch/typosquat_detect
+    params:
+      domain: "{{parse_email.sender_domain}}"
+    description: Typosquat tespiti - gonderen domain mesru domain'in sahte kopyasi mi?
+
+  - name: sender_hudsonrock
+    tool: mcp:arguswatch/hudsonrock_check
+    params:
+      domain: "{{parse_email.sender_domain}}"
+    description: HudsonRock info-stealer kurban kontrolu - gonderen domain calisanlari ele gecirilmis mi?
+
+  - name: paste_leak_check
+    tool: mcp:arguswatch/paste_site_search
+    params:
+      query: "{{parse_email.sender_domain}}"
+    description: Paste site arama - gonderen domain ile iliskili credential leak kontrolu
+
+  # ===== URL Analizi =====
+  - name: url_openphish
+    tool: mcp:arguswatch/openphish_lookup
+    for_each: "extract_iocs.urls"
+    params:
+      url: "{{item}}"
+    description: OpenPhish phishing URL feed kontrolu
+
+  - name: url_check
+    tool: mcp:threat-intel-free/urlhaus_lookup
+    for_each: "extract_iocs.urls"
+    params:
+      indicator: "{{item}}"
+    description: URL'leri URLhaus'ta kontrol et
+
+  - name: url_headers
+    tool: mcp:osint-tools/http_headers
+    for_each: "extract_iocs.urls"
+    params:
+      url: "{{item}}"
+    description: URL'lerin HTTP header'larini kontrol et
+
+  - name: url_ssl
+    tool: mcp:osint-tools/ssl_certificate_info
+    for_each: "extract_iocs.domains"
+    params:
+      host: "{{item}}"
+    description: URL domain'lerinin SSL sertifika kontrolu
+
+  # ===== Ek Dosya Analizi =====
+  - name: attachment_triage
+    tool: mcp:forensics-tools/file_metadata
+    for_each: "parse_email.attachments"
+    params:
+      file_path: "{{item.path}}"
+    description: Ek dosya metadata ve hash analizi
+
+  - name: attachment_hash_check
+    tool: mcp:threat-intel-free/malwarebazaar_hash_lookup
+    for_each: "parse_email.attachments"
+    params:
+      hash_value: "{{item.sha256}}"
+    description: Ek dosya hash'lerini MalwareBazaar'da kontrol et
+
+  - name: attachment_macro_check
+    tool: mcp:remnux/olevba_analyze
+    for_each: "parse_email.attachments"
+    params:
+      file_path: "{{item.path}}"
+    condition:
+      if: "{{item.type}} in ['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'docm', 'xlsm']"
+    description: Office ek dosyalarinda macro kontrolu
+
+  # ===== IP Reputation =====
+  - name: sender_ip_check
+    tool: mcp:threat-intel-free/blocklist_check
+    params:
+      ip: "{{parse_email.sender_ip}}"
+    condition:
+      if: "{{parse_email.sender_ip}}"
+    description: Gonderen IP blocklist kontrolu
+
+  - name: sender_ip_geo
+    tool: mcp:osint-tools/geoip_lookup
+    params:
+      ip: "{{parse_email.sender_ip}}"
+    condition:
+      if: "{{parse_email.sender_ip}}"
+    description: Gonderen IP GeoIP bilgisi
+
+  # ===== Threat Intel =====
+  - name: threatfox_check
+    tool: mcp:threat-intel-free/threatfox_ioc_lookup
+    for_each: "extract_iocs.all_iocs"
+    params:
+      indicator: "{{item}}"
+    description: Tum IOC'lari ThreatFox'ta kontrol et
+
+  # ===== Verdict =====
+  - name: evaluate_phishing
+    condition:
+      if: "{{sender_email_security.score}} < '2/3' or {{url_check.malicious}} or {{attachment_hash_check.malicious}}"
+      then: confirm_phishing
+      else: document_benign
+
+  - name: confirm_phishing
+    tool: generate_rules
+    params:
+      analysis_result: "{{parse_email}}"
+      iocs: "{{extract_iocs}}"
+    description: Phishing onaylandi - engelleme kurallari uret
+
+  - name: document_benign
+    action: final_answer
+    description: >
+      Phishing analiz raporu: gonderen dogrulama, URL analizi,
+      ek dosya kontrolu, IOC listesi, verdict ve aksiyonlar

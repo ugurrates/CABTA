@@ -1,0 +1,1741 @@
+{# Author: Ugur Ates #}
+{# IOC Analysis - submit and view IOC investigation results #}
+{% extends "base.html" %}
+
+{% block title %}IOC Analysis - Blue Team Assistant{% endblock %}
+{% block page_title %}IOC Investigation{% endblock %}
+{% block page_subtitle %}<span class="page-subtitle">Analyze indicators of compromise across multiple threat intelligence sources</span>{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* ── Verdict Banners ── */
+    .verdict-banner {
+        border-radius: 12px;
+        padding: 1.5rem 2rem;
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+        margin-bottom: 1.5rem;
+        color: #fff;
+        font-weight: 600;
+    }
+    .verdict-banner.verdict-malicious {
+        background: linear-gradient(135deg, #dc3545 0%, #a71d2a 100%);
+        box-shadow: 0 4px 24px rgba(220, 53, 69, 0.35);
+    }
+    .verdict-banner.verdict-suspicious {
+        background: linear-gradient(135deg, #fd7e14 0%, #c35a02 100%);
+        box-shadow: 0 4px 24px rgba(253, 126, 20, 0.30);
+    }
+    .verdict-banner.verdict-clean {
+        background: linear-gradient(135deg, #198754 0%, #0f5132 100%);
+        box-shadow: 0 4px 24px rgba(25, 135, 84, 0.30);
+    }
+    .verdict-banner.verdict-unknown {
+        background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+        box-shadow: 0 4px 24px rgba(108, 117, 125, 0.25);
+    }
+    .verdict-icon {
+        font-size: 2.5rem;
+        line-height: 1;
+    }
+    .verdict-label {
+        font-size: 1.35rem;
+        letter-spacing: 0.5px;
+    }
+    .verdict-sublabel {
+        font-size: 0.85rem;
+        opacity: 0.85;
+        font-weight: 400;
+    }
+
+    /* ── Threat Score Gauge ── */
+    .threat-gauge-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+    }
+    .threat-gauge-svg {
+        width: 120px;
+        height: 120px;
+        transform: rotate(-90deg);
+    }
+    .threat-gauge-bg {
+        fill: none;
+        stroke: rgba(255,255,255,0.08);
+        stroke-width: 10;
+    }
+    .threat-gauge-fg {
+        fill: none;
+        stroke-width: 10;
+        stroke-linecap: round;
+        stroke-dasharray: 283;
+        stroke-dashoffset: 283;
+        transition: stroke-dashoffset 1.2s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.4s;
+    }
+    .threat-gauge-text {
+        font-size: 1.6rem;
+        font-weight: 700;
+        fill: var(--bs-body-color);
+    }
+    .threat-gauge-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        opacity: 0.6;
+        margin-top: 0.35rem;
+    }
+
+    /* ── Source Category Styling ── */
+    .source-category {
+        margin-bottom: 1rem;
+    }
+    .source-category-title {
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        color: var(--bs-secondary-color);
+        margin-bottom: 0.5rem;
+        padding-bottom: 0.25rem;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .source-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        font-size: 0.78rem;
+        padding: 0.2rem 0.55rem;
+        margin: 0.15rem 0.1rem;
+        border-radius: 4px;
+        background: rgba(255,255,255,0.04);
+        color: var(--bs-body-color);
+        white-space: nowrap;
+    }
+    .source-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    .source-dot.dot-premium { background: #ffc107; }
+    .source-dot.dot-free { background: #0dcaf0; }
+    .source-dot.dot-osint { background: #198754; }
+    .source-dot.dot-extended { background: #e040fb; }
+
+    /* ── IOC History ── */
+    .ioc-history-item {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.5rem 0.65rem;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.15s;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .ioc-history-item:last-child { border-bottom: none; }
+    .ioc-history-item:hover {
+        background: rgba(255,255,255,0.06);
+    }
+    .ioc-history-value {
+        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        font-size: 0.8rem;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 140px;
+    }
+    .ioc-history-time {
+        font-size: 0.68rem;
+        opacity: 0.5;
+        white-space: nowrap;
+    }
+    .ioc-type-badge {
+        font-size: 0.62rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 3px;
+        text-transform: uppercase;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        background: rgba(var(--bs-primary-rgb), 0.15);
+        color: var(--bs-primary);
+        flex-shrink: 0;
+    }
+
+    /* ── Bulk Mode ── */
+    .mode-toggle-wrap {
+        display: flex;
+        background: rgba(255,255,255,0.05);
+        border-radius: 8px;
+        padding: 3px;
+        margin-bottom: 1rem;
+    }
+    .mode-toggle-btn {
+        flex: 1;
+        border: none;
+        background: transparent;
+        color: var(--bs-secondary-color);
+        padding: 0.4rem 0.75rem;
+        border-radius: 6px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .mode-toggle-btn.active {
+        background: var(--bs-primary);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(var(--bs-primary-rgb), 0.3);
+    }
+    .bulk-textarea {
+        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        font-size: 0.85rem;
+        line-height: 1.6;
+        min-height: 140px;
+        resize: vertical;
+        background: rgba(0,0,0,0.2);
+        border-color: rgba(255,255,255,0.1);
+    }
+    .bulk-textarea:focus {
+        background: rgba(0,0,0,0.25);
+        border-color: var(--bs-primary);
+        box-shadow: 0 0 0 0.2rem rgba(var(--bs-primary-rgb), 0.15);
+    }
+    .bulk-count {
+        font-size: 0.75rem;
+        color: var(--bs-secondary-color);
+    }
+
+    /* ── Collapsible Source Results ── */
+    .source-result-card {
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 8px;
+        margin-bottom: 0.6rem;
+        overflow: hidden;
+    }
+    .source-result-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.65rem 0.85rem;
+        cursor: pointer;
+        background: rgba(255,255,255,0.03);
+        transition: background 0.15s;
+        user-select: none;
+    }
+    .source-result-header:hover {
+        background: rgba(255,255,255,0.06);
+    }
+    .source-result-header .chevron {
+        transition: transform 0.2s;
+        font-size: 0.8rem;
+        opacity: 0.5;
+    }
+    .source-result-header.collapsed .chevron {
+        transform: rotate(-90deg);
+    }
+    .source-result-body {
+        padding: 0.75rem 0.85rem;
+        border-top: 1px solid rgba(255,255,255,0.06);
+        font-size: 0.83rem;
+    }
+    .source-status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    .source-status-dot.hit { background: #dc3545; }
+    .source-status-dot.clean { background: #198754; }
+    .source-status-dot.info { background: #0dcaf0; }
+    .source-status-dot.error { background: #6c757d; }
+    .source-status-dot.warn { background: #fd7e14; }
+    .source-status-dot.nokey { background: #495057; }
+
+    /* ── IOC Detail Card ── */
+    .ioc-detail-card {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1rem;
+    }
+    .ioc-detail-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.3rem 0;
+    }
+    .ioc-detail-label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--bs-secondary-color);
+        min-width: 80px;
+        flex-shrink: 0;
+    }
+    .ioc-detail-value {
+        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        font-size: 0.85rem;
+        word-break: break-all;
+    }
+
+    /* ── Copy Chip ── */
+    .copy-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 4px;
+        background: rgba(var(--bs-primary-rgb), 0.1);
+        border: 1px solid rgba(var(--bs-primary-rgb), 0.2);
+        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        font-size: 0.78rem;
+        cursor: pointer;
+        transition: all 0.15s;
+        margin: 0.15rem;
+    }
+    .copy-chip:hover {
+        background: rgba(var(--bs-primary-rgb), 0.2);
+    }
+    .copy-chip .bi { font-size: 0.7rem; opacity: 0.6; }
+
+    /* ── Copy Button ── */
+    .btn-copy-ioc {
+        padding: 0.15rem 0.4rem;
+        font-size: 0.75rem;
+        border-radius: 4px;
+        opacity: 0.6;
+        transition: opacity 0.15s;
+    }
+    .btn-copy-ioc:hover { opacity: 1; }
+
+    /* ── Timeline ── */
+    .analysis-timeline {
+        position: relative;
+        padding-left: 1.5rem;
+    }
+    .analysis-timeline::before {
+        content: '';
+        position: absolute;
+        left: 5px;
+        top: 4px;
+        bottom: 4px;
+        width: 2px;
+        background: rgba(255,255,255,0.08);
+        border-radius: 1px;
+    }
+    .timeline-step {
+        position: relative;
+        padding-bottom: 0.75rem;
+        font-size: 0.82rem;
+    }
+    .timeline-step::before {
+        content: '';
+        position: absolute;
+        left: -1.5rem;
+        top: 5px;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--bs-primary);
+        border: 2px solid rgba(255,255,255,0.1);
+        margin-left: 1px;
+    }
+    .timeline-step .ts-time {
+        font-size: 0.7rem;
+        opacity: 0.45;
+        margin-left: 0.5rem;
+    }
+
+    /* ── Toast Notification ── */
+    .ioc-toast {
+        position: fixed;
+        bottom: 1.5rem;
+        right: 1.5rem;
+        background: var(--bs-success);
+        color: #fff;
+        padding: 0.6rem 1.1rem;
+        border-radius: 8px;
+        font-size: 0.82rem;
+        font-weight: 600;
+        z-index: 10000;
+        opacity: 0;
+        transform: translateY(10px);
+        transition: all 0.25s;
+        pointer-events: none;
+    }
+    .ioc-toast.show {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    /* ── C2 Alert Card ── */
+    .c2-alert-card {
+        border: 2px solid #dc3545;
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1rem;
+        background: rgba(220, 53, 69, 0.08);
+        animation: c2pulse 2s ease-in-out infinite;
+    }
+    @keyframes c2pulse {
+        0%, 100% { box-shadow: 0 0 8px rgba(220, 53, 69, 0.3); }
+        50% { box-shadow: 0 0 20px rgba(220, 53, 69, 0.6); }
+    }
+    .c2-alert-header {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #dc3545;
+        margin-bottom: 0.75rem;
+    }
+    .c2-alert-header i { font-size: 1.4rem; }
+    .c2-framework-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.25rem 0.65rem;
+        border-radius: 5px;
+        background: rgba(220, 53, 69, 0.15);
+        border: 1px solid rgba(220, 53, 69, 0.3);
+        color: #ff6b7a;
+        font-weight: 600;
+        font-size: 0.82rem;
+        margin: 0.2rem;
+    }
+    .c2-indicator-item {
+        font-size: 0.8rem;
+        padding: 0.2rem 0;
+        color: var(--bs-body-color);
+        opacity: 0.85;
+    }
+    .c2-indicator-item i { color: #dc3545; margin-right: 0.3rem; }
+
+    /* ── Detection Rules ── */
+    .detection-rules-section { margin-bottom: 1rem; }
+    .detection-rule-tab {
+        border: none;
+        background: rgba(255,255,255,0.05);
+        color: var(--bs-secondary-color);
+        padding: 0.4rem 0.85rem;
+        border-radius: 6px 6px 0 0;
+        font-size: 0.78rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+        margin-right: 2px;
+    }
+    .detection-rule-tab.active {
+        background: rgba(var(--bs-primary-rgb), 0.15);
+        color: var(--bs-primary);
+    }
+    .detection-rule-pane {
+        display: none;
+        background: rgba(0,0,0,0.25);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 0 6px 6px 6px;
+        padding: 0.75rem;
+        position: relative;
+    }
+    .detection-rule-pane.active { display: block; }
+    .detection-rule-pane pre {
+        margin: 0;
+        font-size: 0.78rem;
+        white-space: pre-wrap;
+        word-break: break-word;
+        color: #e0e0e0;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+    .btn-copy-rule {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        padding: 0.2rem 0.5rem;
+        font-size: 0.72rem;
+        border-radius: 4px;
+        z-index: 2;
+    }
+
+    /* ── LLM Analysis Card ── */
+    .llm-analysis-card {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px;
+        padding: 1.25rem;
+        margin-bottom: 1rem;
+    }
+    .llm-verdict-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.3rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .llm-verdict-badge.badge-malicious { background: rgba(220,53,69,0.15); color: #ff6b7a; border: 1px solid rgba(220,53,69,0.3); }
+    .llm-verdict-badge.badge-suspicious { background: rgba(253,126,20,0.15); color: #fd9a47; border: 1px solid rgba(253,126,20,0.3); }
+    .llm-verdict-badge.badge-clean { background: rgba(25,135,84,0.15); color: #5cb985; border: 1px solid rgba(25,135,84,0.3); }
+    .llm-verdict-badge.badge-unknown { background: rgba(108,117,125,0.15); color: #adb5bd; border: 1px solid rgba(108,117,125,0.3); }
+    .llm-analysis-text {
+        font-size: 0.85rem;
+        line-height: 1.65;
+        color: var(--bs-body-color);
+        opacity: 0.9;
+        margin-top: 0.75rem;
+        white-space: pre-wrap;
+    }
+    .llm-recommendations-list {
+        list-style: none;
+        padding: 0;
+        margin: 0.75rem 0 0 0;
+        counter-reset: llmrec;
+    }
+    .llm-recommendations-list li {
+        counter-increment: llmrec;
+        padding: 0.4rem 0 0.4rem 2rem;
+        position: relative;
+        font-size: 0.83rem;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .llm-recommendations-list li:last-child { border-bottom: none; }
+    .llm-recommendations-list li::before {
+        content: counter(llmrec);
+        position: absolute;
+        left: 0;
+        top: 0.4rem;
+        width: 1.4rem;
+        height: 1.4rem;
+        border-radius: 50%;
+        background: rgba(var(--bs-primary-rgb), 0.15);
+        color: var(--bs-primary);
+        font-size: 0.72rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* ── Recommendations Checklist ── */
+    .rec-checklist { list-style: none; padding: 0; margin: 0; }
+    .rec-checklist li {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        padding: 0.5rem 0.25rem;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        font-size: 0.83rem;
+    }
+    .rec-checklist li:last-child { border-bottom: none; }
+    .rec-checklist input[type="checkbox"] {
+        margin-top: 0.2rem;
+        accent-color: var(--bs-primary);
+        flex-shrink: 0;
+    }
+    .rec-checklist li.checked { opacity: 0.5; text-decoration: line-through; }
+
+    /* ── Scoring Summary ── */
+    .scoring-summary-card {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 10px;
+        padding: 1rem 1.25rem;
+        margin-bottom: 1rem;
+    }
+    .scoring-stat {
+        text-align: center;
+        padding: 0.5rem;
+    }
+    .scoring-stat-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        line-height: 1;
+    }
+    .scoring-stat-label {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--bs-secondary-color);
+        margin-top: 0.25rem;
+    }
+
+    /* ── Source Score Bars ── */
+    .source-score-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.3rem 0;
+        font-size: 0.8rem;
+    }
+    .source-score-name {
+        min-width: 110px;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+    .source-score-bar-bg {
+        flex: 1;
+        height: 8px;
+        background: rgba(255,255,255,0.06);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    .source-score-bar-fg {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.6s ease;
+    }
+    .source-score-val {
+        min-width: 30px;
+        text-align: right;
+        font-weight: 600;
+        font-size: 0.75rem;
+    }
+
+    /* ── Enhanced Source Detail ── */
+    .source-detail-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 0.4rem 1rem;
+        margin-top: 0.5rem;
+    }
+    .source-detail-item {
+        display: flex;
+        flex-direction: column;
+    }
+    .source-detail-key {
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: var(--bs-secondary-color);
+    }
+    .source-detail-val {
+        font-size: 0.82rem;
+        font-weight: 500;
+        word-break: break-all;
+    }
+    .source-tag {
+        display: inline-block;
+        padding: 0.1rem 0.4rem;
+        border-radius: 3px;
+        background: rgba(var(--bs-primary-rgb), 0.1);
+        font-size: 0.72rem;
+        margin: 0.1rem;
+    }
+    .source-vuln-tag {
+        display: inline-block;
+        padding: 0.1rem 0.4rem;
+        border-radius: 3px;
+        background: rgba(220, 53, 69, 0.12);
+        color: #ff6b7a;
+        font-size: 0.72rem;
+        margin: 0.1rem;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 991.98px) {
+        .verdict-banner { padding: 1rem; gap: 0.75rem; }
+        .verdict-icon { font-size: 1.8rem; }
+        .verdict-label { font-size: 1.1rem; }
+        .source-detail-grid { grid-template-columns: 1fr 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <!-- IOC Submit Form -->
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header d-flex align-items-center">
+                <i class="bi bi-search me-2 text-accent"></i>
+                <h5 class="mb-0">Submit IOC for Analysis</h5>
+            </div>
+            <div class="card-body">
+                <!-- Mode Toggle -->
+                <div class="mode-toggle-wrap">
+                    <button type="button" class="mode-toggle-btn active" id="btnModeSingle" onclick="setIOCMode('single')">
+                        <i class="bi bi-cursor-text me-1"></i>Single IOC
+                    </button>
+                    <button type="button" class="mode-toggle-btn" id="btnModeBulk" onclick="setIOCMode('bulk')">
+                        <i class="bi bi-list-ul me-1"></i>Bulk IOC
+                    </button>
+                </div>
+
+                <form id="iocForm" onsubmit="return false;">
+                    <!-- Single IOC Mode -->
+                    <div id="singleMode">
+                        <div class="mb-3">
+                            <label for="iocValue" class="form-label">IOC Value</label>
+                            <div class="input-group">
+                                <span class="input-group-text"><i class="bi bi-crosshair"></i></span>
+                                <input type="text" id="iocValue" name="ioc_value" class="form-control" required
+                                       placeholder="e.g. 8.8.8.8, evil.com, d41d8cd98f00b204...">
+                            </div>
+                            <div class="form-text">
+                                Enter an IP address, domain, URL, file hash, email address, or CVE ID.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bulk IOC Mode (hidden by default) -->
+                    <div id="bulkMode" style="display: none;">
+                        <div class="mb-3">
+                            <label for="bulkIOCValue" class="form-label">IOC Values <span class="bulk-count" id="bulkCount">(0 IOCs)</span></label>
+                            <textarea id="bulkIOCValue" class="form-control bulk-textarea"
+                                      placeholder="Paste one IOC per line, e.g.&#10;8.8.8.8&#10;evil.com&#10;d41d8cd98f00b204e9800998ecf8427e&#10;CVE-2024-1234"></textarea>
+                            <div class="form-text">
+                                One indicator per line. Empty lines and duplicates are ignored.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="iocType" class="form-label">IOC Type</label>
+                        <select id="iocType" name="ioc_type" class="form-select">
+                            <option value="auto">Auto-detect</option>
+                            <option value="ip">IP Address</option>
+                            <option value="domain">Domain</option>
+                            <option value="url">URL</option>
+                            <option value="hash_md5">MD5 Hash</option>
+                            <option value="hash_sha1">SHA1 Hash</option>
+                            <option value="hash_sha256">SHA256 Hash</option>
+                            <option value="email">Email Address</option>
+                            <option value="cve">CVE ID</option>
+                        </select>
+                    </div>
+
+                    <!-- Single submit -->
+                    <button type="submit" id="iocSubmitBtn" class="btn btn-primary w-100">
+                        <i class="bi bi-send me-2"></i>Analyze IOC
+                    </button>
+                    <!-- Bulk submit (hidden by default) -->
+                    <button type="button" id="bulkSubmitBtn" class="btn btn-primary w-100" style="display:none;" onclick="processBulkIOCs()">
+                        <i class="bi bi-collection me-2"></i>Process Bulk IOCs
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Intelligence Sources & History -->
+    <div class="col-lg-5">
+        <!-- Enhanced Intelligence Sources -->
+        <div class="card mb-3">
+            <div class="card-header d-flex align-items-center">
+                <i class="bi bi-info-circle me-2 text-accent"></i>
+                <h5 class="mb-0">Intelligence Sources</h5>
+            </div>
+            <div class="card-body py-3">
+                <!-- Premium APIs -->
+                <div class="source-category">
+                    <div class="source-category-title"><i class="bi bi-star-fill me-1" style="color:#ffc107"></i> Premium APIs</div>
+                    <div class="d-flex flex-wrap">
+                        <span class="source-item"><span class="source-dot dot-premium"></span>VirusTotal</span>
+                        <span class="source-item"><span class="source-dot dot-premium"></span>AbuseIPDB</span>
+                        <span class="source-item"><span class="source-dot dot-premium"></span>Shodan</span>
+                        <span class="source-item"><span class="source-dot dot-premium"></span>AlienVault OTX</span>
+                        <span class="source-item"><span class="source-dot dot-premium"></span>GreyNoise</span>
+                    </div>
+                </div>
+                <!-- Free Threat Intel -->
+                <div class="source-category">
+                    <div class="source-category-title"><i class="bi bi-shield-check me-1" style="color:#0dcaf0"></i> Free Threat Intel</div>
+                    <div class="d-flex flex-wrap">
+                        <span class="source-item"><span class="source-dot dot-free"></span>URLhaus</span>
+                        <span class="source-item"><span class="source-dot dot-free"></span>MalwareBazaar</span>
+                        <span class="source-item"><span class="source-dot dot-free"></span>ThreatFox</span>
+                        <span class="source-item"><span class="source-dot dot-free"></span>Feodo Tracker</span>
+                        <span class="source-item"><span class="source-dot dot-free"></span>OpenPhish</span>
+                        <span class="source-item"><span class="source-dot dot-free"></span>CIRCL MISP</span>
+                    </div>
+                </div>
+                <!-- OSINT & Enrichment -->
+                <div class="source-category">
+                    <div class="source-category-title"><i class="bi bi-globe me-1" style="color:#198754"></i> OSINT &amp; Enrichment</div>
+                    <div class="d-flex flex-wrap">
+                        <span class="source-item"><span class="source-dot dot-osint"></span>WHOIS</span>
+                        <span class="source-item"><span class="source-dot dot-osint"></span>DNS</span>
+                        <span class="source-item"><span class="source-dot dot-osint"></span>GeoIP</span>
+                        <span class="source-item"><span class="source-dot dot-osint"></span>SSL Certs</span>
+                        <span class="source-item"><span class="source-dot dot-osint"></span>Reverse DNS</span>
+                        <span class="source-item"><span class="source-dot dot-osint"></span>Subdomain Enum</span>
+                    </div>
+                </div>
+                <!-- ArgusWatch Extended -->
+                <div class="source-category mb-0">
+                    <div class="source-category-title"><i class="bi bi-eye-fill me-1" style="color:#e040fb"></i> ArgusWatch Extended</div>
+                    <div class="d-flex flex-wrap">
+                        <span class="source-item"><span class="source-dot dot-extended"></span>Shodan InternetDB</span>
+                        <span class="source-item"><span class="source-dot dot-extended"></span>Malpedia</span>
+                        <span class="source-item"><span class="source-dot dot-extended"></span>HudsonRock</span>
+                        <span class="source-item"><span class="source-dot dot-extended"></span>EPSS</span>
+                        <span class="source-item"><span class="source-dot dot-extended"></span>Ransomwatch</span>
+                        <span class="source-item"><span class="source-dot dot-extended"></span>Typosquat Detection</span>
+                        <span class="source-item"><span class="source-dot dot-extended"></span>Dark Web Search</span>
+                        <span class="source-item"><span class="source-dot dot-extended"></span>Paste Monitoring</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- IOC History Sidebar -->
+        <div class="card">
+            <div class="card-header d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center">
+                    <i class="bi bi-clock-history me-2 text-accent"></i>
+                    <h5 class="mb-0">Recent Lookups</h5>
+                </div>
+                <button class="btn btn-sm btn-ghost text-muted" onclick="clearIOCHistory()" title="Clear history">
+                    <i class="bi bi-trash3"></i>
+                </button>
+            </div>
+            <div class="card-body p-2" id="iocHistoryList">
+                <div class="text-center text-muted py-3" style="font-size:0.82rem;">
+                    <i class="bi bi-clock d-block mb-1" style="font-size:1.2rem;opacity:0.4"></i>
+                    No recent lookups
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Progress Area (hidden by default) -->
+<div id="iocProgressArea" class="mt-4" style="display: none;">
+    <div class="card">
+        <div class="card-header d-flex align-items-center">
+            <i class="bi bi-hourglass-split me-2 text-accent"></i>
+            <h5 class="mb-0">Analysis in Progress</h5>
+        </div>
+        <div class="card-body">
+            <div class="d-flex align-items-center mb-2">
+                <strong id="progressStatus">Initializing...</strong>
+                <div class="spinner-border spinner-border-sm ms-auto" role="status" id="progressSpinner">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+            <div class="progress" style="height: 24px;">
+                <div id="iocProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                     role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                    0%
+                </div>
+            </div>
+            <ul id="progressLog" class="list-unstyled mt-3 mb-0 small text-muted"></ul>
+        </div>
+    </div>
+</div>
+
+<!-- Results Container (hidden by default) -->
+<div id="iocResults" class="mt-4" style="display: none;">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center">
+                <i class="bi bi-clipboard-data me-2 text-accent"></i>
+                <h5 class="mb-0">Analysis Results</h5>
+            </div>
+            <div>
+                <button class="btn btn-sm btn-outline-primary me-1" id="btnExportJson" title="Export as JSON">
+                    <i class="bi bi-filetype-json me-1"></i>JSON
+                </button>
+                <button class="btn btn-sm btn-outline-primary" id="btnPrintReport" title="Print report">
+                    <i class="bi bi-printer me-1"></i>Print
+                </button>
+            </div>
+        </div>
+        <div class="card-body" id="iocResultsBody">
+            {# Populated dynamically by JS - content from renderIOCResult is pre-sanitized via escHtml #}
+        </div>
+    </div>
+</div>
+
+<!-- Toast for copy feedback -->
+<div class="ioc-toast" id="iocCopyToast"><i class="bi bi-check-circle me-1"></i>Copied to clipboard</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    'use strict';
+
+    /* --- DOM references --- */
+    var form = document.getElementById('iocForm');
+    var progressArea = document.getElementById('iocProgressArea');
+    var progressBar = document.getElementById('iocProgressBar');
+    var progressStatus = document.getElementById('progressStatus');
+    var progressLog = document.getElementById('progressLog');
+    var progressSpinner = document.getElementById('progressSpinner');
+    var resultsArea = document.getElementById('iocResults');
+    var resultsBody = document.getElementById('iocResultsBody');
+    var btnExportJson = document.getElementById('btnExportJson');
+    var btnPrintReport = document.getElementById('btnPrintReport');
+
+    var lastResultData = null;
+    var currentMode = 'single'; /* 'single' or 'bulk' */
+
+    /* ========================================================
+       HTML HELPERS
+       All dynamic content is escaped through escHtml before
+       being assembled into markup strings. This is the same
+       sanitization pattern used by analysis.js / renderIOCResult.
+    ======================================================== */
+    function escHtml(str) {
+        if (!str) return '';
+        var d = document.createElement('div');
+        d.appendChild(document.createTextNode(String(str)));
+        return d.innerHTML;
+    }
+
+    function escAttr(str) {
+        return escHtml(str).replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+    }
+
+    /* ========================================================
+       IOC MODE TOGGLE
+    ======================================================== */
+    window.setIOCMode = function (mode) {
+        currentMode = mode;
+        var singleMode = document.getElementById('singleMode');
+        var bulkMode = document.getElementById('bulkMode');
+        var singleBtn = document.getElementById('btnModeSingle');
+        var bulkBtn = document.getElementById('btnModeBulk');
+        var submitBtn = document.getElementById('iocSubmitBtn');
+        var bulkSubmitBtn = document.getElementById('bulkSubmitBtn');
+        var iocInput = document.getElementById('iocValue');
+
+        if (mode === 'bulk') {
+            singleMode.style.display = 'none';
+            bulkMode.style.display = 'block';
+            singleBtn.classList.remove('active');
+            bulkBtn.classList.add('active');
+            submitBtn.style.display = 'none';
+            bulkSubmitBtn.style.display = '';
+            iocInput.removeAttribute('required');
+        } else {
+            singleMode.style.display = 'block';
+            bulkMode.style.display = 'none';
+            singleBtn.classList.add('active');
+            bulkBtn.classList.remove('active');
+            submitBtn.style.display = '';
+            bulkSubmitBtn.style.display = 'none';
+            iocInput.setAttribute('required', '');
+        }
+    };
+
+    /* Bulk textarea counter */
+    var bulkTA = document.getElementById('bulkIOCValue');
+    var bulkCount = document.getElementById('bulkCount');
+    if (bulkTA) {
+        bulkTA.addEventListener('input', function () {
+            var lines = bulkTA.value.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+            var unique = lines.filter(function (v, i, a) { return a.indexOf(v) === i; });
+            bulkCount.textContent = '(' + unique.length + ' IOC' + (unique.length !== 1 ? 's' : '') + ')';
+        });
+    }
+
+    /* Process bulk IOCs sequentially */
+    window.processBulkIOCs = function () {
+        if (!bulkTA) return;
+        var lines = bulkTA.value.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+        var unique = lines.filter(function (v, i, a) { return a.indexOf(v) === i; });
+        if (unique.length === 0) { alert('Please enter at least one IOC.'); return; }
+        var iocType = document.getElementById('iocType').value;
+        /* Process first IOC and queue the rest as info */
+        var first = unique[0];
+        saveIOCHistory(first, iocType);
+        runAnalysis(first, iocType);
+        if (unique.length > 1) {
+            var infoLi = document.createElement('li');
+            infoLi.textContent = (unique.length - 1) + ' more IOC(s) queued. Submit them individually or integrate with batch API.';
+            progressLog.appendChild(infoLi);
+        }
+    };
+
+    /* ========================================================
+       IOC HISTORY (localStorage)
+    ======================================================== */
+    var HISTORY_KEY = 'bta_ioc_history';
+    var MAX_HISTORY = 5;
+
+    function getIOCHistory() {
+        try {
+            return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+        } catch (e) { return []; }
+    }
+
+    function saveIOCHistory(value, type) {
+        var hist = getIOCHistory();
+        /* Remove duplicate if exists */
+        hist = hist.filter(function (h) { return h.value !== value; });
+        hist.unshift({ value: value, type: type || 'auto', ts: Date.now() });
+        if (hist.length > MAX_HISTORY) hist = hist.slice(0, MAX_HISTORY);
+        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(hist)); } catch (e) { /* quota exceeded - ignore */ }
+        renderIOCHistory();
+    }
+
+    window.clearIOCHistory = function () {
+        try { localStorage.removeItem(HISTORY_KEY); } catch (e) { /* ignore */ }
+        renderIOCHistory();
+    };
+
+    function renderIOCHistory() {
+        var container = document.getElementById('iocHistoryList');
+        if (!container) return;
+        var hist = getIOCHistory();
+        if (hist.length === 0) {
+            /* Safe: static content only */
+            container.textContent = '';
+            var emptyDiv = document.createElement('div');
+            emptyDiv.className = 'text-center text-muted py-3';
+            emptyDiv.style.fontSize = '0.82rem';
+            var iconEl = document.createElement('i');
+            iconEl.className = 'bi bi-clock d-block mb-1';
+            iconEl.style.fontSize = '1.2rem';
+            iconEl.style.opacity = '0.4';
+            emptyDiv.appendChild(iconEl);
+            emptyDiv.appendChild(document.createTextNode('No recent lookups'));
+            container.appendChild(emptyDiv);
+            return;
+        }
+        /* Build history items using DOM methods for safety */
+        container.textContent = '';
+        hist.forEach(function (h) {
+            var truncVal = h.value.length > 28 ? h.value.substring(0, 28) + '...' : h.value;
+            var ago = timeAgo(h.ts);
+
+            var item = document.createElement('div');
+            item.className = 'ioc-history-item';
+            item.title = h.value;
+            item.addEventListener('click', (function(val, typ) {
+                return function() { window.reAnalyzeIOC(val, typ); };
+            })(h.value, h.type));
+
+            var valSpan = document.createElement('span');
+            valSpan.className = 'ioc-history-value';
+            valSpan.textContent = truncVal;
+
+            var badgeSpan = document.createElement('span');
+            badgeSpan.className = 'ioc-type-badge';
+            badgeSpan.textContent = h.type;
+
+            var timeSpan = document.createElement('span');
+            timeSpan.className = 'ioc-history-time';
+            timeSpan.textContent = ago;
+
+            item.appendChild(valSpan);
+            item.appendChild(badgeSpan);
+            item.appendChild(timeSpan);
+            container.appendChild(item);
+        });
+    }
+
+    window.reAnalyzeIOC = function (value, type) {
+        document.getElementById('iocValue').value = value;
+        document.getElementById('iocType').value = type || 'auto';
+        if (currentMode === 'bulk') window.setIOCMode('single');
+        runAnalysis(value, type);
+    };
+
+    function timeAgo(ts) {
+        var diff = Math.floor((Date.now() - ts) / 1000);
+        if (diff < 60) return 'just now';
+        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+        return Math.floor(diff / 86400) + 'd ago';
+    }
+
+    /* ========================================================
+       CLIPBOARD COPY with TOAST
+    ======================================================== */
+    window.copyIOCToClipboard = function (text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(showCopyToast).catch(function () { fallbackCopy(text); });
+        } else {
+            fallbackCopy(text);
+        }
+    };
+
+    function fallbackCopy(text) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); showCopyToast(); } catch (e) { /* ignore */ }
+        document.body.removeChild(ta);
+    }
+
+    function showCopyToast() {
+        var toast = document.getElementById('iocCopyToast');
+        if (!toast) return;
+        toast.classList.add('show');
+        setTimeout(function () { toast.classList.remove('show'); }, 1800);
+    }
+
+    /* ========================================================
+       STRUCTURED RESULT RENDERER
+       Builds the enhanced result layout from analysis data.
+       All dynamic values are escaped via escHtml/escAttr before
+       assembly, following the same pattern as analysis.js.
+    ======================================================== */
+    /* ── Helper: render enhanced source detail for known sources ── */
+    function renderSourceDetail(srcName, srcData) {
+        if (!srcData || typeof srcData !== 'object') return '';
+        var key = srcName.toLowerCase().replace(/[\s_-]/g, '');
+        var html = '<div class="source-detail-grid">';
+        var hasDetail = false;
+
+        function addField(label, val) {
+            if (val === undefined || val === null || val === '') return;
+            hasDetail = true;
+            html += '<div class="source-detail-item"><span class="source-detail-key">' + escHtml(label) + '</span>' +
+                '<span class="source-detail-val">' + escHtml(String(val)) + '</span></div>';
+        }
+
+        if (key === 'virustotal') {
+            addField('Detections', srcData.detections || srcData.positives);
+            addField('Score', srcData.score);
+            addField('Last Analysis', srcData.last_analysis || srcData.last_analysis_date);
+            addField('Total Engines', srcData.total);
+            addField('Reputation', srcData.reputation);
+            addField('Permalink', srcData.permalink);
+        } else if (key === 'abuseipdb') {
+            addField('Confidence', srcData.confidence !== undefined ? srcData.confidence + '%' : undefined);
+            addField('Reports', srcData.reports || srcData.report_count || srcData.total_reports);
+            addField('Score', srcData.score);
+            addField('Country', srcData.country || srcData.country_code);
+            addField('Usage Type', srcData.usage_type);
+            addField('ISP', srcData.isp);
+            addField('Domain', srcData.domain);
+            addField('Last Reported', srcData.last_reported_at || srcData.last_reported);
+        } else if (key === 'shodan') {
+            if (srcData.ports && Array.isArray(srcData.ports) && srcData.ports.length > 0) {
+                hasDetail = true;
+                html += '<div class="source-detail-item"><span class="source-detail-key">Open Ports</span>' +
+                    '<span class="source-detail-val">' + srcData.ports.map(function(p) { return escHtml(String(p)); }).join(', ') + '</span></div>';
+            }
+            if (srcData.hostnames && Array.isArray(srcData.hostnames) && srcData.hostnames.length > 0) {
+                hasDetail = true;
+                html += '<div class="source-detail-item"><span class="source-detail-key">Hostnames</span>' +
+                    '<span class="source-detail-val">' + srcData.hostnames.map(function(h) { return escHtml(h); }).join(', ') + '</span></div>';
+            }
+            addField('OS', srcData.os);
+            addField('Org', srcData.org);
+            if (srcData.vulns && Array.isArray(srcData.vulns) && srcData.vulns.length > 0) {
+                hasDetail = true;
+                html += '<div class="source-detail-item" style="grid-column:1/-1"><span class="source-detail-key">Vulnerabilities (' + srcData.vulns.length + ')</span>' +
+                    '<div>' + srcData.vulns.map(function(v) { return '<span class="source-vuln-tag">' + escHtml(v) + '</span>'; }).join('') + '</div></div>';
+            }
+            if (srcData.tags && Array.isArray(srcData.tags) && srcData.tags.length > 0) {
+                hasDetail = true;
+                html += '<div class="source-detail-item" style="grid-column:1/-1"><span class="source-detail-key">Tags</span>' +
+                    '<div>' + srcData.tags.map(function(t) { return '<span class="source-tag">' + escHtml(t) + '</span>'; }).join('') + '</div></div>';
+            }
+        } else if (key === 'alienvault' || key === 'alienvaultotx') {
+            addField('Pulse Count', srcData.pulses || srcData.pulse_count);
+            addField('Score', srcData.score);
+            addField('Reputation', srcData.reputation);
+            addField('Country', srcData.country);
+            addField('Message', srcData.message);
+        } else if (key === 'c2trackers' || key === 'c2_trackers') {
+            addField('Sources Checked', srcData.sources_checked);
+            addField('Sources Found', srcData.sources_found);
+            if (srcData.malware_families && Array.isArray(srcData.malware_families) && srcData.malware_families.length > 0) {
+                hasDetail = true;
+                html += '<div class="source-detail-item" style="grid-column:1/-1"><span class="source-detail-key">Malware Families</span>' +
+                    '<div>' + srcData.malware_families.map(function(m) { return '<span class="source-vuln-tag">' + escHtml(m) + '</span>'; }).join('') + '</div></div>';
+            }
+            if (srcData.c2_frameworks && Array.isArray(srcData.c2_frameworks) && srcData.c2_frameworks.length > 0) {
+                hasDetail = true;
+                html += '<div class="source-detail-item" style="grid-column:1/-1"><span class="source-detail-key">C2 Frameworks</span>' +
+                    '<div>' + srcData.c2_frameworks.map(function(f) { return '<span class="c2-framework-badge"><i class="bi bi-radioactive"></i>' + escHtml(f) + '</span>'; }).join('') + '</div></div>';
+            }
+        } else if (key === 'torexitnodes' || key === 'tor_exit_nodes') {
+            addField('Is Tor Exit Node', srcData.is_tor === true ? 'YES' : (srcData.is_tor === false ? 'No' : undefined));
+            addField('Node Name', srcData.name);
+            addField('Message', srcData.message);
+        } else if (key === 'spamhaus') {
+            addField('Listed', srcData.listed === true ? 'YES - Listed' : (srcData.listed === false ? 'Not Listed' : undefined));
+            addField('Lists', srcData.lists);
+            addField('Message', srcData.message);
+        } else if (key === 'talos' || key === 'ciscotalos') {
+            addField('SBRS Score', srcData.sbrs_score);
+            addField('URL', srcData.url);
+            addField('Email Reputation', srcData.email_reputation);
+            addField('Web Reputation', srcData.web_reputation);
+            addField('Message', srcData.message);
+        } else if (key === 'usom') {
+            addField('Score', srcData.score);
+            addField('Message', srcData.message);
+            addField('URL', srcData.url);
+        } else if (key === 'greynoise') {
+            addField('Classification', srcData.classification);
+            addField('Name', srcData.name);
+            addField('Noise', srcData.noise === true ? 'Yes' : (srcData.noise === false ? 'No' : undefined));
+            addField('RIOT', srcData.riot === true ? 'Yes' : (srcData.riot === false ? 'No' : undefined));
+            addField('Message', srcData.message);
+            if (!hasDetail && srcData.status) addField('Status', srcData.status);
+        } else if (key === 'urlhaus') {
+            addField('Threat', srcData.threat);
+            addField('URL Count', srcData.url_count);
+            addField('Tags', srcData.tags ? (Array.isArray(srcData.tags) ? srcData.tags.join(', ') : srcData.tags) : undefined);
+            addField('Message', srcData.message);
+        } else if (key === 'feodotracker') {
+            addField('Malware', srcData.malware);
+            addField('First Seen', srcData.first_seen);
+            addField('Last Online', srcData.last_online);
+            addField('Port', srcData.port);
+            addField('Message', srcData.message);
+        } else if (key === 'threatfox') {
+            addField('Message', srcData.message);
+            addField('Threat Type', srcData.threat_type);
+            addField('Malware', srcData.malware);
+        } else if (key === 'pulsedive') {
+            addField('Risk', srcData.risk);
+            addField('Threats', srcData.threats);
+            addField('Message', srcData.message);
+        } else if (key === 'threatcrowd') {
+            addField('Votes', srcData.votes);
+            addField('Resolutions', srcData.resolutions);
+            addField('Message', srcData.message);
+            if (!hasDetail && srcData.status) addField('Status', srcData.status);
+        } else {
+            /* Generic fallback for unknown sources */
+            addField('Score', srcData.score);
+            addField('Message', srcData.message);
+            addField('Status', srcData.status !== '✓' && srcData.status !== '✗' && srcData.status !== '⚠' && srcData.status !== '➖' ? srcData.status : undefined);
+            addField('URL', srcData.url);
+            if (srcData.is_tor === true) addField('TOR Exit Node', 'YES');
+        }
+
+        html += '</div>';
+        return hasDetail ? html : '';
+    }
+
+    /* ── Helper: detect C2 info from sources ── */
+    function extractC2Info(data) {
+        var c2 = { is_c2: false, frameworks: [], indicators: [] };
+        if (!data) return c2;
+        /* Check top-level */
+        if (data.is_c2) c2.is_c2 = true;
+        if (data.c2_frameworks && Array.isArray(data.c2_frameworks)) { c2.frameworks = c2.frameworks.concat(data.c2_frameworks); c2.is_c2 = true; }
+        if (data.c2_indicators && Array.isArray(data.c2_indicators)) { c2.indicators = c2.indicators.concat(data.c2_indicators); c2.is_c2 = true; }
+        /* Check in sources */
+        if (data.sources && typeof data.sources === 'object') {
+            Object.keys(data.sources).forEach(function(sn) {
+                var sd = data.sources[sn];
+                if (!sd) return;
+                if (sd.is_c2) c2.is_c2 = true;
+                if (sd.c2_frameworks && Array.isArray(sd.c2_frameworks)) { c2.frameworks = c2.frameworks.concat(sd.c2_frameworks); c2.is_c2 = true; }
+                if (sd.c2_indicators && Array.isArray(sd.c2_indicators)) { c2.indicators = c2.indicators.concat(sd.c2_indicators); c2.is_c2 = true; }
+            });
+        }
+        /* Deduplicate */
+        c2.frameworks = c2.frameworks.filter(function(v, i, a) { return a.indexOf(v) === i; });
+        c2.indicators = c2.indicators.filter(function(v, i, a) { return a.indexOf(v) === i; });
+        return c2;
+    }
+
+    window.renderStructuredResult = function (data) {
+        if (!data) return '<p class="text-muted">No data received.</p>';
+
+        var html = '';
+
+        /* --- Determine verdict --- */
+        var verdict = 'unknown';
+        var verdictLabel = 'Unknown';
+        var verdictSub = 'Insufficient data for classification';
+        var verdictIcon = 'bi-question-circle-fill';
+        var score = 0;
+
+        if (data.threat_score !== undefined && data.threat_score !== null) {
+            score = parseInt(data.threat_score, 10) || 0;
+        } else if (data.score !== undefined) {
+            score = parseInt(data.score, 10) || 0;
+        } else if (data.risk_score !== undefined) {
+            score = parseInt(data.risk_score, 10) || 0;
+        }
+
+        if (data.verdict) {
+            verdict = String(data.verdict).toLowerCase();
+        } else if (score >= 70) {
+            verdict = 'malicious';
+        } else if (score >= 40) {
+            verdict = 'suspicious';
+        } else if (score > 0 || (data.sources && Object.keys(data.sources).length > 0)) {
+            verdict = 'clean';
+        }
+
+        if (verdict === 'malicious') {
+            verdictLabel = 'Malicious'; verdictSub = 'This indicator has been flagged as malicious by multiple sources';
+            verdictIcon = 'bi-shield-fill-exclamation';
+        } else if (verdict === 'suspicious') {
+            verdictLabel = 'Suspicious'; verdictSub = 'This indicator shows suspicious activity, manual review recommended';
+            verdictIcon = 'bi-exclamation-triangle-fill';
+        } else if (verdict === 'clean') {
+            verdictLabel = 'Clean'; verdictSub = 'No significant threat indicators detected';
+            verdictIcon = 'bi-shield-fill-check';
+        }
+
+        /* --- Verdict Banner --- */
+        html += '<div class="verdict-banner verdict-' + escAttr(verdict) + '">' +
+            '<span class="verdict-icon"><i class="bi ' + escAttr(verdictIcon) + '"></i></span>' +
+            '<div><div class="verdict-label">' + escHtml(verdictLabel) + '</div>' +
+            '<div class="verdict-sublabel">' + escHtml(verdictSub) + '</div></div></div>';
+
+        /* --- C2 ALERT (Critical - prominent) --- */
+        var c2Info = extractC2Info(data);
+        if (c2Info.is_c2) {
+            html += '<div class="c2-alert-card">' +
+                '<div class="c2-alert-header"><i class="bi bi-radioactive"></i> COMMAND &amp; CONTROL DETECTED</div>';
+            if (c2Info.frameworks.length > 0) {
+                html += '<div class="mb-2"><span class="source-detail-key">C2 Frameworks Identified</span><div class="mt-1">';
+                c2Info.frameworks.forEach(function(fw) {
+                    html += '<span class="c2-framework-badge"><i class="bi bi-radioactive"></i> ' + escHtml(fw) + '</span>';
+                });
+                html += '</div></div>';
+            }
+            if (c2Info.indicators.length > 0) {
+                html += '<div><span class="source-detail-key">Indicators</span>';
+                c2Info.indicators.forEach(function(ind) {
+                    html += '<div class="c2-indicator-item"><i class="bi bi-exclamation-diamond-fill"></i>' + escHtml(ind) + '</div>';
+                });
+                html += '</div>';
+            }
+            html += '</div>';
+        }
+
+        /* --- Score Gauge + IOC Details + Scoring Summary Row --- */
+        html += '<div class="row g-3 mb-3">';
+
+        /* Threat Score Gauge */
+        var gaugeColor = score >= 70 ? '#dc3545' : (score >= 40 ? '#fd7e14' : '#198754');
+        var dashOffset = 283 - (283 * Math.min(Math.max(score, 0), 100) / 100);
+        html += '<div class="col-auto"><div class="threat-gauge-wrap">' +
+            '<svg class="threat-gauge-svg" viewBox="0 0 100 100">' +
+            '<circle class="threat-gauge-bg" cx="50" cy="50" r="45"></circle>' +
+            '<circle class="threat-gauge-fg" cx="50" cy="50" r="45" style="stroke:' + escAttr(gaugeColor) + ';stroke-dashoffset:' + escAttr(String(dashOffset)) + '"></circle>' +
+            '<text class="threat-gauge-text" x="50" y="50" text-anchor="middle" dominant-baseline="central" transform="rotate(90,50,50)">' + escHtml(String(score)) + '</text>' +
+            '</svg>' +
+            '<div class="threat-gauge-label">Threat Score</div>' +
+            '</div></div>';
+
+        /* IOC Details Card */
+        var iocVal = data.ioc_value || data.ioc || data.indicator || '-';
+        var iocType = data.ioc_type || data.type || 'unknown';
+        var firstSeen = data.first_seen || data.firstSeen || '-';
+        var lastSeen = data.last_seen || data.lastSeen || '-';
+
+        html += '<div class="col"><div class="ioc-detail-card">' +
+            '<div class="ioc-detail-row"><span class="ioc-detail-label">Type</span><span class="ioc-type-badge">' + escHtml(iocType) + '</span></div>' +
+            '<div class="ioc-detail-row"><span class="ioc-detail-label">Value</span>' +
+            '<span class="ioc-detail-value">' + escHtml(iocVal) + '</span>' +
+            '<button class="btn btn-sm btn-outline-secondary btn-copy-ioc ms-2" onclick="copyIOCToClipboard(\'' + escAttr(iocVal) + '\')" title="Copy">' +
+            '<i class="bi bi-clipboard"></i></button></div>' +
+            '<div class="ioc-detail-row"><span class="ioc-detail-label">First Seen</span><span>' + escHtml(firstSeen) + '</span></div>' +
+            '<div class="ioc-detail-row"><span class="ioc-detail-label">Last Seen</span><span>' + escHtml(lastSeen) + '</span></div>' +
+            '</div></div>';
+
+        html += '</div>'; /* close row */
+
+        /* --- Scoring Summary Card (sources_checked vs sources_flagged) --- */
+        var sourcesChecked = data.sources_checked || (data.sources ? Object.keys(data.sources).length : 0);
+        var sourcesFlagged = data.sources_flagged || 0;
+        if (!data.sources_flagged && data.sources && typeof data.sources === 'object') {
+            Object.keys(data.sources).forEach(function(sn) {
+                var sd = data.sources[sn];
+                if (sd && (sd.malicious || sd.detected || (sd.found === true && sd.malicious !== false))) sourcesFlagged++;
+            });
+        }
+        html += '<div class="scoring-summary-card">' +
+            '<h6 class="mb-3"><i class="bi bi-bar-chart-line me-2"></i>Scoring Summary</h6>' +
+            '<div class="row g-2 text-center">' +
+            '<div class="col"><div class="scoring-stat"><div class="scoring-stat-value" style="color:' + escAttr(gaugeColor) + '">' + escHtml(String(score)) + '</div><div class="scoring-stat-label">Threat Score</div></div></div>' +
+            '<div class="col"><div class="scoring-stat"><div class="scoring-stat-value text-info">' + escHtml(String(sourcesChecked)) + '</div><div class="scoring-stat-label">Sources Checked</div></div></div>' +
+            '<div class="col"><div class="scoring-stat"><div class="scoring-stat-value text-danger">' + escHtml(String(sourcesFlagged)) + '</div><div class="scoring-stat-label">Sources Flagged</div></div></div>' +
+            '</div>';
+
+        /* --- Source Score Breakdown (visual bars) --- */
+        if (data.source_scores && typeof data.source_scores === 'object') {
+            html += '<h6 class="mt-3 mb-2" style="font-size:0.78rem;"><i class="bi bi-segmented-nav me-1"></i>Source Score Breakdown</h6>';
+            Object.keys(data.source_scores).forEach(function(sn) {
+                var sScore = parseInt(data.source_scores[sn], 10) || 0;
+                var barColor = sScore >= 70 ? '#dc3545' : (sScore >= 40 ? '#fd7e14' : '#198754');
+                html += '<div class="source-score-row">' +
+                    '<span class="source-score-name">' + escHtml(sn) + '</span>' +
+                    '<div class="source-score-bar-bg"><div class="source-score-bar-fg" style="width:' + Math.min(sScore, 100) + '%;background:' + escAttr(barColor) + '"></div></div>' +
+                    '<span class="source-score-val" style="color:' + escAttr(barColor) + '">' + escHtml(String(sScore)) + '</span>' +
+                    '</div>';
+            });
+        }
+        html += '</div>';
+
+        /* --- LLM Analysis Card --- */
+        if (data.llm_analysis && typeof data.llm_analysis === 'object') {
+            var llm = data.llm_analysis;
+            var llmVerdict = (llm.verdict || '').toLowerCase();
+            var badgeClass = 'badge-unknown';
+            if (llmVerdict.indexOf('malicious') >= 0) badgeClass = 'badge-malicious';
+            else if (llmVerdict.indexOf('suspicious') >= 0) badgeClass = 'badge-suspicious';
+            else if (llmVerdict.indexOf('clean') >= 0 || llmVerdict.indexOf('benign') >= 0) badgeClass = 'badge-clean';
+
+            html += '<div class="llm-analysis-card">' +
+                '<div class="d-flex align-items-center justify-content-between mb-2">' +
+                '<h6 class="mb-0"><i class="bi bi-robot me-2"></i>AI Analysis</h6>';
+            if (llm.verdict) {
+                html += '<span class="llm-verdict-badge ' + escAttr(badgeClass) + '"><i class="bi bi-cpu"></i> ' + escHtml(llm.verdict) + '</span>';
+            }
+            html += '</div>';
+            if (llm.analysis) {
+                html += '<div class="llm-analysis-text">' + escHtml(llm.analysis) + '</div>';
+            }
+            if (llm.recommendations && Array.isArray(llm.recommendations) && llm.recommendations.length > 0) {
+                html += '<h6 class="mt-3 mb-1" style="font-size:0.8rem;"><i class="bi bi-lightbulb me-1"></i>AI Recommendations</h6>' +
+                    '<ol class="llm-recommendations-list">';
+                llm.recommendations.forEach(function(rec) {
+                    html += '<li>' + escHtml(rec) + '</li>';
+                });
+                html += '</ol>';
+            }
+            html += '</div>';
+        }
+
+        /* --- Detection Rules Section --- */
+        if (data.detection_rules && typeof data.detection_rules === 'object') {
+            var rules = data.detection_rules;
+            var ruleTypes = [];
+            if (rules.kql) ruleTypes.push({ key: 'kql', label: 'KQL (Defender/Sentinel)', icon: 'bi-shield-lock' });
+            if (rules.spl) ruleTypes.push({ key: 'spl', label: 'Splunk SPL', icon: 'bi-search' });
+            if (rules.sigma) ruleTypes.push({ key: 'sigma', label: 'Sigma Rule', icon: 'bi-file-earmark-code' });
+            if (rules.xql) ruleTypes.push({ key: 'xql', label: 'Cortex XDR XQL', icon: 'bi-binoculars' });
+            /* Also handle any other rule types dynamically */
+            Object.keys(rules).forEach(function(rk) {
+                if (['kql','spl','sigma','xql'].indexOf(rk) < 0 && rules[rk]) {
+                    ruleTypes.push({ key: rk, label: rk.toUpperCase(), icon: 'bi-code-slash' });
+                }
+            });
+
+            if (ruleTypes.length > 0) {
+                html += '<div class="detection-rules-section">' +
+                    '<h6 class="mb-2"><i class="bi bi-filetype-yml me-2"></i>Detection Rules</h6>' +
+                    '<div class="d-flex flex-wrap mb-0">';
+                ruleTypes.forEach(function(rt, ri) {
+                    html += '<button class="detection-rule-tab' + (ri === 0 ? ' active' : '') + '" onclick="switchDetectionRule(\'' + escAttr(rt.key) + '\', this)">' +
+                        '<i class="bi ' + escAttr(rt.icon) + ' me-1"></i>' + escHtml(rt.label) + '</button>';
+                });
+                html += '</div>';
+                ruleTypes.forEach(function(rt, ri) {
+                    html += '<div class="detection-rule-pane' + (ri === 0 ? ' active' : '') + '" data-rule-key="' + escAttr(rt.key) + '">' +
+                        '<button class="btn btn-sm btn-outline-light btn-copy-rule" onclick="copyIOCToClipboard(document.querySelector(\'[data-rule-key=' + escAttr(rt.key) + '] pre\').textContent)">' +
+                        '<i class="bi bi-clipboard me-1"></i>Copy</button>' +
+                        '<pre>' + escHtml(rules[rt.key]) + '</pre></div>';
+                });
+                html += '</div>';
+            }
+        }
+
+        /* --- Source-by-source Collapsible Results (Enhanced) --- */
+        if (data.sources && typeof data.sources === 'object') {
+            html += '<h6 class="mt-3 mb-2"><i class="bi bi-database me-1"></i>Source Results</h6>';
+            var srcKeys = Object.keys(data.sources);
+            srcKeys.forEach(function (srcName, idx) {
+                var srcData = data.sources[srcName];
+                var statusClass = 'info';
+                var statusLabel = '';
+                if (!srcData) { statusClass = 'clean'; statusLabel = 'No Data'; }
+                else if (srcData.error) { statusClass = 'error'; statusLabel = 'Error'; }
+                else if (srcData.malicious) { statusClass = 'hit'; statusLabel = 'Malicious'; }
+                else if (srcData.status === '✓' || srcData.detected || srcData.found === true || srcData.listed === true) { statusClass = 'hit'; statusLabel = 'Detected'; }
+                else if (srcData.score > 0 || (srcData.confidence !== undefined && srcData.confidence > 50)) { statusClass = 'hit'; statusLabel = 'Flagged'; }
+                else if (srcData.status === '⚠' || (srcData.message && !srcData.found)) { statusClass = 'warn'; statusLabel = 'Warning'; }
+                else if (srcData.status === 'No valid API key configured') { statusClass = 'nokey'; statusLabel = 'No API Key'; }
+                else if (srcData.found === false || srcData.status === '✗') { statusClass = 'clean'; statusLabel = 'Clean'; }
+                else { statusClass = 'clean'; statusLabel = 'Clean'; }
+
+                /* Build a concise status summary for the header */
+                var headerExtra = '';
+                if (srcData) {
+                    if (srcData.confidence !== undefined) headerExtra += '<span class="badge bg-secondary ms-2" style="font-size:0.68rem;">' + escHtml(String(srcData.confidence)) + '% conf</span>';
+                    if (srcData.reports !== undefined) headerExtra += '<span class="badge bg-secondary ms-2" style="font-size:0.68rem;">' + escHtml(String(srcData.reports)) + ' reports</span>';
+                    if (srcData.detections !== undefined) headerExtra += '<span class="badge bg-secondary ms-2" style="font-size:0.68rem;">' + escHtml(String(srcData.detections)) + ' det</span>';
+                    if (srcData.pulses !== undefined || srcData.pulse_count !== undefined) headerExtra += '<span class="badge bg-secondary ms-2" style="font-size:0.68rem;">' + escHtml(String(srcData.pulses || srcData.pulse_count)) + ' pulses</span>';
+                    if (srcData.score > 0) headerExtra += '<span class="badge ' + (srcData.score >= 70 ? 'bg-danger' : (srcData.score >= 40 ? 'bg-warning text-dark' : 'bg-info')) + ' ms-2" style="font-size:0.68rem;">Score: ' + escHtml(String(srcData.score)) + '</span>';
+                    if (srcData.is_c2) headerExtra += '<span class="badge bg-danger ms-2" style="font-size:0.68rem;"><i class="bi bi-radioactive"></i> C2</span>';
+                    if (srcData.is_tor === true) headerExtra += '<span class="badge bg-warning text-dark ms-2" style="font-size:0.68rem;"><i class="bi bi-shield-exclamation"></i> TOR</span>';
+                    if (srcData.listed === true) headerExtra += '<span class="badge bg-danger ms-2" style="font-size:0.68rem;">Listed</span>';
+                    if (srcData.ports && Array.isArray(srcData.ports) && srcData.ports.length > 0) headerExtra += '<span class="badge bg-info ms-2" style="font-size:0.68rem;">' + srcData.ports.length + ' ports</span>';
+                }
+
+                var colId = 'srcCollapse' + idx;
+                var detailHtml = renderSourceDetail(srcName, srcData);
+                html += '<div class="source-result-card">' +
+                    '<div class="source-result-header" data-bs-toggle="collapse" data-bs-target="#' + escAttr(colId) + '" aria-expanded="true">' +
+                    '<span class="source-status-dot ' + escAttr(statusClass) + '"></span>' +
+                    '<strong style="font-size:0.85rem;flex:1">' + escHtml(srcName) + '</strong>' +
+                    headerExtra +
+                    '<span class="badge bg-' + (statusClass === 'hit' ? 'danger' : (statusClass === 'error' ? 'secondary' : (statusClass === 'warn' ? 'warning text-dark' : (statusClass === 'nokey' ? 'dark' : 'success')))) + '" style="font-size:0.65rem;">' + escHtml(statusLabel) + '</span>' +
+                    '<i class="bi bi-chevron-down chevron ms-2"></i>' +
+                    '</div>' +
+                    '<div class="collapse show" id="' + escAttr(colId) + '">' +
+                    '<div class="source-result-body">';
+                if (detailHtml) {
+                    html += detailHtml + '<details class="mt-2"><summary style="font-size:0.72rem;cursor:pointer;color:var(--bs-secondary-color);">View raw data</summary>' +
+                        '<pre style="white-space:pre-wrap;word-break:break-word;margin:0.5rem 0 0 0;font-size:0.75rem;">' + escHtml(JSON.stringify(srcData, null, 2)) + '</pre></details>';
+                } else {
+                    html += '<pre style="white-space:pre-wrap;word-break:break-word;margin:0;font-size:0.78rem;">' +
+                        escHtml(JSON.stringify(srcData, null, 2)) + '</pre>';
+                }
+                html += '</div></div></div>';
+            });
+        }
+
+        /* --- Recommended Actions (with checkboxes for analyst tracking) --- */
+        var recs = data.recommendations || (data.llm_analysis && data.llm_analysis.action_items) || [];
+        if (Array.isArray(recs) && recs.length > 0) {
+            html += '<div class="ioc-detail-card mt-3">' +
+                '<h6 class="mb-2"><i class="bi bi-check2-square me-2"></i>Recommended Actions</h6>' +
+                '<ul class="rec-checklist">';
+            recs.forEach(function(rec, ri) {
+                var recText = typeof rec === 'string' ? rec : (rec.action || rec.text || rec.description || '');
+                if (recText) {
+                    html += '<li id="recItem' + ri + '"><input type="checkbox" onchange="this.parentElement.classList.toggle(\'checked\', this.checked)"><span>' + escHtml(recText) + '</span></li>';
+                }
+            });
+            html += '</ul></div>';
+        }
+
+        /* --- Extracted IOCs --- */
+        if (data.extracted_iocs && Array.isArray(data.extracted_iocs) && data.extracted_iocs.length > 0) {
+            html += '<h6 class="mt-3 mb-2"><i class="bi bi-link-45deg me-1"></i>Extracted IOCs</h6><div class="d-flex flex-wrap">';
+            data.extracted_iocs.forEach(function (eioc) {
+                var val = typeof eioc === 'string' ? eioc : (eioc.value || eioc.indicator || '');
+                if (val) {
+                    html += '<span class="copy-chip" onclick="copyIOCToClipboard(\'' + escAttr(val) + '\')">' +
+                        '<i class="bi bi-clipboard"></i>' + escHtml(val) + '</span>';
+                }
+            });
+            html += '</div>';
+        }
+
+        /* --- Analysis Timeline --- */
+        if (data.timeline && Array.isArray(data.timeline) && data.timeline.length > 0) {
+            html += '<h6 class="mt-3 mb-2"><i class="bi bi-clock-history me-1"></i>Analysis Timeline</h6>';
+            html += '<div class="analysis-timeline">';
+            data.timeline.forEach(function (step) {
+                var stepMsg = typeof step === 'string' ? step : (step.message || step.step || '');
+                var stepTime = (step && step.time) ? step.time : '';
+                html += '<div class="timeline-step">' + escHtml(stepMsg) +
+                    (stepTime ? '<span class="ts-time">' + escHtml(stepTime) + '</span>' : '') + '</div>';
+            });
+            html += '</div>';
+        }
+
+        /* --- Fallback: raw JSON if no structured fields --- */
+        if (!data.sources && !data.verdict && data.threat_score === undefined && data.score === undefined) {
+            html += '<h6 class="mt-3 mb-2"><i class="bi bi-code-slash me-1"></i>Raw Response</h6>';
+            html += '<pre style="white-space:pre-wrap;word-break:break-word;font-size:0.82rem;">' +
+                escHtml(JSON.stringify(data, null, 2)) + '</pre>';
+        }
+
+        return html;
+    };
+
+    /* ── Detection Rule Tab Switching ── */
+    window.switchDetectionRule = function(ruleKey, btn) {
+        /* Deactivate all tabs and panes */
+        var tabs = btn.parentElement.querySelectorAll('.detection-rule-tab');
+        tabs.forEach(function(t) { t.classList.remove('active'); });
+        btn.classList.add('active');
+        var section = btn.closest('.detection-rules-section');
+        var panes = section.querySelectorAll('.detection-rule-pane');
+        panes.forEach(function(p) { p.classList.remove('active'); });
+        var target = section.querySelector('[data-rule-key="' + ruleKey + '"]');
+        if (target) target.classList.add('active');
+    };
+
+    /* ========================================================
+       PROGRESS HELPER
+    ======================================================== */
+    function setProgress(pct, message) {
+        progressBar.style.width = pct + '%';
+        progressBar.setAttribute('aria-valuenow', pct);
+        progressBar.textContent = pct + '%';
+        if (message) {
+            progressStatus.textContent = message;
+            var li = document.createElement('li');
+            li.textContent = message;
+            progressLog.appendChild(li);
+        }
+    }
+
+    /**
+     * Safely render pre-sanitized HTML from analysis.js renderIOCResult().
+     * The renderIOCResult function in analysis.js escapes all user data
+     * through the escHtml() helper before building HTML strings.
+     * This is the designated safe rendering path per the application architecture.
+     */
+    function renderSanitizedResult(container, sanitizedHtml) {
+        /* eslint-disable no-unsanitized/property -- output from escHtml-based renderer */
+        container.innerHTML = sanitizedHtml;
+        /* eslint-enable no-unsanitized/property */
+    }
+
+    /* ========================================================
+       RUN ANALYSIS
+    ======================================================== */
+    function runAnalysis(iocValue, iocType) {
+        if (typeof window.startIOCAnalysis !== 'function') {
+            alert('Analysis engine not loaded. Please refresh the page.');
+            return;
+        }
+        if (!iocValue) return;
+
+        progressArea.style.display = 'block';
+        resultsArea.style.display = 'none';
+        while (progressLog.firstChild) { progressLog.removeChild(progressLog.firstChild); }
+        progressBar.classList.remove('bg-danger');
+        progressSpinner.style.display = '';
+        setProgress(0, 'Submitting IOC...');
+
+        window.startIOCAnalysis(iocValue, iocType || 'auto', {
+            onProgress: function (data) {
+                setProgress(data.percent || 0, data.message || '');
+            },
+            onComplete: function (data) {
+                lastResultData = data;
+                setProgress(100, 'Analysis complete.');
+                progressSpinner.style.display = 'none';
+                resultsArea.style.display = 'block';
+
+                /* Use structured renderer if data has structured fields, else fall back */
+                if (data && (data.sources || data.verdict || data.threat_score !== undefined || data.score !== undefined)) {
+                    renderSanitizedResult(resultsBody, renderStructuredResult(data));
+                } else if (data && data.html) {
+                    /* data.html is pre-sanitized by renderIOCResult in analysis.js via escHtml */
+                    renderSanitizedResult(resultsBody, data.html);
+                } else {
+                    renderSanitizedResult(resultsBody, renderStructuredResult(data));
+                }
+            },
+            onError: function (err) {
+                setProgress(0, 'Error: ' + (err.message || err));
+                progressBar.classList.add('bg-danger');
+                progressSpinner.style.display = 'none';
+            }
+        });
+    }
+
+    /* ========================================================
+       FORM SUBMIT HANDLER
+    ======================================================== */
+    if (form) {
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var iocValue = document.getElementById('iocValue').value.trim();
+            var iocType = document.getElementById('iocType').value;
+            if (!iocValue) return;
+            saveIOCHistory(iocValue, iocType);
+            runAnalysis(iocValue, iocType);
+        });
+    }
+
+    /* ========================================================
+       AUTO-LOAD FROM URL ?id= PARAMETER
+    ======================================================== */
+    var params = new URLSearchParams(window.location.search);
+    var analysisId = params.get('id');
+    if (analysisId) {
+        progressArea.style.display = 'block';
+        setProgress(5, 'Loading analysis...');
+        progressSpinner.style.display = '';
+
+        var safeId = encodeURIComponent(analysisId);
+
+        fetch('/api/analysis/' + safeId + '/status')
+            .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function (statusData) {
+                if (statusData.status === 'completed' || statusData.status === 'complete') {
+                    return fetch('/api/analysis/' + safeId)
+                        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+                        .then(function (fullResult) {
+                            var innerResult = fullResult.result ? (typeof fullResult.result === 'string' ? JSON.parse(fullResult.result) : fullResult.result) : fullResult;
+                            lastResultData = innerResult;
+                            setProgress(100, 'Analysis loaded.');
+                            progressSpinner.style.display = 'none';
+                            resultsArea.style.display = 'block';
+                            renderSanitizedResult(resultsBody, renderStructuredResult(innerResult));
+                        });
+                }
+                if (statusData.status === 'failed' || statusData.status === 'error') {
+                    setProgress(0, 'Analysis failed: ' + (statusData.current_step || 'Unknown error'));
+                    progressBar.classList.add('bg-danger');
+                    progressSpinner.style.display = 'none';
+                    return;
+                }
+                setProgress(statusData.progress || 10, statusData.current_step || 'Resuming...');
+            })
+            .catch(function (err) {
+                setProgress(0, 'Error loading analysis: ' + err.message);
+                progressBar.classList.add('bg-danger');
+                progressSpinner.style.display = 'none';
+            });
+    }
+
+    /* ========================================================
+       EXPORT JSON
+    ======================================================== */
+    if (btnExportJson) {
+        btnExportJson.addEventListener('click', function () {
+            if (!lastResultData) return;
+            var blob = new Blob([JSON.stringify(lastResultData, null, 2)], { type: 'application/json' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'ioc-analysis-' + Date.now() + '.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
+    }
+
+    /* ========================================================
+       PRINT
+    ======================================================== */
+    if (btnPrintReport) {
+        btnPrintReport.addEventListener('click', function () {
+            window.print();
+        });
+    }
+
+    /* ========================================================
+       COLLAPSE CHEVRON TOGGLE (Bootstrap event delegation)
+    ======================================================== */
+    document.addEventListener('shown.bs.collapse', function (e) {
+        var header = e.target.previousElementSibling;
+        if (header && header.classList.contains('source-result-header')) {
+            header.classList.remove('collapsed');
+        }
+    });
+    document.addEventListener('hidden.bs.collapse', function (e) {
+        var header = e.target.previousElementSibling;
+        if (header && header.classList.contains('source-result-header')) {
+            header.classList.add('collapsed');
+        }
+    });
+
+    /* ========================================================
+       INIT: Render IOC history on page load
+    ======================================================== */
+    renderIOCHistory();
+
+})();
+</script>
+{% endblock %}

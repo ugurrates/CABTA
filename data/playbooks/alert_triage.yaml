@@ -1,0 +1,195 @@
+name: Alert Triage
+description: >
+  Guvenlik uyari triyaj playbook'u - gelen uyarilari hizli siniflandirma,
+  IOC cikarma, tehdit istihbarati zenginlestirme, onceliklendirme ve aksiyon belirleme.
+  MCP araclariyla otomatik multi-source threat intel kontrolu.
+trigger_type: manual
+input_params:
+  - name: alert_text
+    description: Uyari metni / Alert text (SIEM alert, EDR alert, email notification)
+    required: true
+  - name: alert_source
+    description: Uyari kaynagi (SIEM, EDR, IDS, email) / Alert source
+    required: false
+  - name: alert_severity
+    description: Kaynak sistem onem derecesi / Source system severity
+    required: false
+
+steps:
+  # ===== Phase 1: IOC Cikarma =====
+  - name: extract_alert_iocs
+    tool: extract_iocs
+    params:
+      text: "{{alert_text}}"
+    description: Uyari metninden tum IOC'lari cikar (IP, domain, hash, URL, email, CVE)
+
+  # ===== Phase 2: Threat Intel Zenginlestirme =====
+  - name: hash_malwarebazaar
+    tool: mcp:threat-intel-free/malwarebazaar_hash_lookup
+    for_each: "extract_alert_iocs.hashes"
+    params:
+      hash_value: "{{item}}"
+    description: Hash'leri MalwareBazaar'da kontrol et
+
+  - name: hash_malwoverview
+    tool: mcp:malwoverview/malwoverview_hash_lookup
+    for_each: "extract_alert_iocs.hashes"
+    params:
+      hash_value: "{{item}}"
+    description: Malwoverview ile kapsamli hash istihbarati
+
+  - name: url_urlhaus
+    tool: mcp:threat-intel-free/urlhaus_lookup
+    for_each: "extract_alert_iocs.urls"
+    params:
+      indicator: "{{item}}"
+    description: URL'leri URLhaus'ta kontrol et
+
+  - name: ip_blocklist
+    tool: mcp:threat-intel-free/blocklist_check
+    for_each: "extract_alert_iocs.ips"
+    params:
+      ip: "{{item}}"
+    description: IP'leri blocklist'lerde kontrol et
+
+  - name: ip_feodo
+    tool: mcp:threat-intel-free/feodo_tracker_check
+    for_each: "extract_alert_iocs.ips"
+    params:
+      ip: "{{item}}"
+    description: IP'leri Feodo Tracker C2 listesinde kontrol et
+
+  - name: ip_tor
+    tool: mcp:threat-intel-free/tor_exit_node_check
+    for_each: "extract_alert_iocs.ips"
+    params:
+      ip: "{{item}}"
+    description: Tor exit node kontrolu
+
+  - name: threatfox_all
+    tool: mcp:threat-intel-free/threatfox_ioc_lookup
+    for_each: "extract_alert_iocs.all_iocs"
+    params:
+      indicator: "{{item}}"
+    description: Tum IOC'lari ThreatFox'ta kontrol et
+
+  # ===== Phase 2b: ArgusWatch Zenginlestirme =====
+  - name: ip_shodan_internetdb
+    tool: mcp:arguswatch/shodan_internetdb_lookup
+    for_each: "extract_alert_iocs.ips"
+    params:
+      ip: "{{item}}"
+    description: Shodan InternetDB ile IP acik port, CVE ve servis kontrolu (FREE, API key gerektirmez)
+
+  - name: url_openphish
+    tool: mcp:arguswatch/openphish_lookup
+    for_each: "extract_alert_iocs.urls"
+    params:
+      url: "{{item}}"
+    description: OpenPhish phishing URL feed kontrolu
+
+  - name: ioc_circl_misp
+    tool: mcp:arguswatch/circl_misp_feed_check
+    for_each: "extract_alert_iocs.all_iocs"
+    params:
+      ioc: "{{item}}"
+    description: CIRCL MISP European CERT threat intel feed kontrolu (hashlookup + BGP ranking)
+
+  - name: ransomware_check
+    tool: mcp:arguswatch/ransomwatch_check
+    params:
+      query: "{{alert_text}}"
+    description: Ransomwatch ile ransomware grup aktivitesi ve kurban kontrolu
+
+  # ===== Phase 3: OSINT Zenginlestirme =====
+  - name: ip_geoip
+    tool: mcp:osint-tools/geoip_lookup
+    for_each: "extract_alert_iocs.ips"
+    params:
+      ip: "{{item}}"
+    description: IP GeoIP bilgisi - ulke/sehir/ISP
+
+  - name: domain_whois
+    tool: mcp:osint-tools/whois_lookup
+    for_each: "extract_alert_iocs.domains"
+    params:
+      target: "{{item}}"
+    description: Domain WHOIS bilgisi
+
+  - name: domain_dns
+    tool: mcp:osint-tools/dns_resolve
+    for_each: "extract_alert_iocs.domains"
+    params:
+      domain: "{{item}}"
+    description: Domain DNS cozumlemesi
+
+  - name: email_security
+    tool: mcp:osint-tools/email_security_check
+    for_each: "extract_alert_iocs.sender_domains"
+    params:
+      domain: "{{item}}"
+    condition:
+      if: "{{extract_alert_iocs.sender_domains}}"
+    description: Email guvenlik kontrolu (SPF, DKIM, DMARC)
+
+  # ===== Phase 4: Zafiyet Kontrolu =====
+  - name: cve_lookup
+    tool: mcp:vulnerability-tools/cve_lookup
+    for_each: "extract_alert_iocs.cve_ids"
+    params:
+      cve_id: "{{item}}"
+    condition:
+      if: "{{extract_alert_iocs.cve_ids}}"
+    description: CVE detay bilgisi (CVSS, aciklama, etki)
+
+  - name: cve_kev
+    tool: mcp:vulnerability-tools/kev_check
+    for_each: "extract_alert_iocs.cve_ids"
+    params:
+      cve_id: "{{item}}"
+    condition:
+      if: "{{extract_alert_iocs.cve_ids}}"
+    description: CVE'nin CISA KEV (aktif istismar) listesinde olup olmadigini kontrol et
+
+  - name: cve_epss
+    tool: mcp:vulnerability-tools/epss_score
+    for_each: "extract_alert_iocs.cve_ids"
+    params:
+      cve_id: "{{item}}"
+    condition:
+      if: "{{extract_alert_iocs.cve_ids}}"
+    description: EPSS skoru - istismar olasiligi tahmini
+
+  # ===== Phase 5: Onceliklendirme =====
+  - name: priority_evaluation
+    condition:
+      if: >
+        {{hash_malwarebazaar.malicious}} or
+        {{ip_blocklist.blocklisted}} or
+        {{ip_feodo.found}} or
+        {{threatfox_all.found}} or
+        {{cve_kev.in_kev}}
+      then: high_priority_response
+      else: low_priority_document
+
+  - name: high_priority_response
+    action: trigger_playbook
+    params:
+      playbook: incident_response
+      incident_description: "{{alert_text}}"
+      enriched_iocs: "{{threatfox_all}}"
+    description: >
+      YUKSEK ONCELIK - Onaylanan tehdit bulundu.
+      IOC'lar threat intel veritabanlarinda eslesme gosteriyor.
+      Olay mudahale playbook'una yonlendir.
+
+  - name: low_priority_document
+    action: final_answer
+    description: >
+      Uyari triyaj raporu:
+      - Cikartilan IOC listesi
+      - Threat intel sonuclari (MalwareBazaar, URLhaus, ThreatFox, Feodo, blocklist)
+      - OSINT bilgileri (GeoIP, WHOIS, DNS)
+      - CVE/EPSS/KEV kontrolleri
+      - Oncelik seviyesi ve onerilen aksiyonlar
+      - False positive degerlendirmesi
