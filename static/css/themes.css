@@ -1593,3 +1593,79 @@ textarea.form-control {
         border: 1px solid #ddd;
     }
 }
+
+
+/* =================================================================
+   32. Dark Mode - Bootstrap Override Fixes
+   Ensures all text is readable on dark backgrounds
+   ================================================================= */
+[data-theme="dark"] .text-dark,
+[data-theme="dark"] .text-body {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] .form-check-label,
+[data-theme="dark"] .form-label {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .source-name,
+[data-theme="dark"] .source-item {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .engine-cat,
+[data-theme="dark"] .engine-status {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .ph-title,
+[data-theme="dark"] .ph-desc {
+    color: var(--text-secondary) !important;
+}
+
+[data-theme="dark"] .nav-section-label {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="dark"] strong,
+[data-theme="dark"] b {
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .badge.text-dark {
+    color: var(--text-primary) !important;
+}
+
+[data-theme="dark"] p,
+[data-theme="dark"] span,
+[data-theme="dark"] div,
+[data-theme="dark"] label {
+    color: inherit;
+}
+
+/* Force all direct text children in dark mode to be readable */
+[data-theme="dark"] .card-body,
+[data-theme="dark"] .card-header,
+[data-theme="dark"] .card-footer {
+    color: var(--text-primary);
+}
+
+[data-theme="dark"] .drop-zone-enhanced,
+[data-theme="dark"] .drop-zone-enhanced p,
+[data-theme="dark"] .drop-zone-enhanced span {
+    color: var(--text-secondary);
+}
+
+[data-theme="dark"] .cap-group-label {
+    color: var(--text-muted) !important;
+}
+
+/* Bootstrap text utilities override for dark mode */
+[data-theme="dark"] .text-muted {
+    color: var(--text-muted) !important;
+}
+
+[data-theme="dark"] .text-secondary {
+    color: var(--text-secondary) !important;
+}
